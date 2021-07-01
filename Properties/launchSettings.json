@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "TestDDLCMod": {
+      "commandName": "Executable",
+      "executablePath": "$(MSBuildProgramFiles32)\\Steam\\steamapps\\common\\Doki Doki Literature Club Plus\\Doki Doki Literature Club Plus.exe"
+    }
+  }
+}
