@@ -7,6 +7,7 @@ using BepInEx;
 using HarmonyLib;
 using RenpyLauncher;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace TestDDLCMod
 {
@@ -33,11 +34,26 @@ namespace TestDDLCMod
             var QuitButton = StartMenuItemCanvas.Find("QuitButton");
             var ModsButton = UnityEngine.Object.Instantiate(QuitButton);
             QuitButton.localPosition -= new Vector3(0, 73);
+
+            ModsButton.name = "ModsButton";
             ModsButton.SetParent(StartMenuItemCanvas, false);
-            var ModsTextComponent = ModsButton.Find("QuitButtonText (TMP)").GetComponent<TMPro.TextMeshProUGUI>();
-            ModsTextComponent.text = "Mods";
-            __instance.ButtonStrings.Insert(__instance.ButtonStrings.Count - 1, ModsTextComponent.text);
-            __instance.ButtonTexts.Insert(__instance.ButtonTexts.Count - 1, ModsTextComponent);
+
+            var ModsButtonText = ModsButton.Find("QuitButtonText (TMP)");
+            ModsButtonText.name = "ModsButtonText (TMP)";
+
+            var ModsButtonTextComponent = ModsButtonText.GetComponent<TMPro.TextMeshProUGUI>();
+            ModsButtonTextComponent.text = "Mods";
+            __instance.ButtonStrings.Insert(__instance.ButtonStrings.Count - 1, ModsButtonTextComponent.text);
+            __instance.ButtonTexts.Insert(__instance.ButtonTexts.Count - 1, ModsButtonTextComponent);
+
+            var ModsButtonImage = ModsButton.Find("QuitButtonImage");
+            ModsButtonImage.name = "ModsButtonImage";
+
+            var ModsButtonImageComponent = ModsButtonImage.GetComponent<Image>();
+            Resources.FindObjectsOfTypeAll<Sprite>().DoIf(sprite => sprite.name == "files icon", sprite => ModsButtonImageComponent.sprite = sprite);
+
+            var ModsButtonHighlightImageComponent = ModsButton.Find("HighlightImage").GetComponent<Image>();
+            Resources.FindObjectsOfTypeAll<Sprite>().DoIf(sprite => sprite.name == "file icons highlight", sprite => ModsButtonHighlightImageComponent.sprite = sprite);
         }
     }
     [HarmonyPatch()]
