@@ -13,10 +13,6 @@
       <HintPath>Libs\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="0Harmony20">
-      <HintPath>Libs\0Harmony20.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>Libs\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
