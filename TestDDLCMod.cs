@@ -22,6 +22,35 @@ namespace TestDDLCMod
         }
     }
 
+    [HarmonyPatch(typeof(LauncherMain), "Start")]
+    public static class PatchLauncherMainStart
+    {
+        public static LauncherAppId ModsAppId = LauncherAppId.ContinueUpdate + 1;
+        static void Prefix(LauncherMain __instance)
+        {
+            var FileBrowserCanvas = __instance.gameObject.transform.Find("FileBrowserCanvas");
+            var ModBrowserCanvas = UnityEngine.Object.Instantiate(FileBrowserCanvas);
+            ModBrowserCanvas.SetParent(FileBrowserCanvas.parent, false);
+            ModBrowserCanvas.name = "ModBrowserCanvas";
+
+            var ModBrowserApp = ModBrowserCanvas.GetComponent<FileBrowserApp>();
+            ModBrowserApp.appId = ModsAppId;
+            __instance.apps.Add(ModBrowserApp);
+
+            var Refresher = ModBrowserApp.HeaderBarPrefab.GetComponent<WindowBarTextRefresher>();
+            for (var i = 0; i < Refresher.textFields.Count; ++i)
+            {
+                if (Refresher.textFields[i].text == "Files")
+                {
+                    WindowBarTextRefresher.TextStringPair NewPair;
+                    NewPair.text = "Mods";
+                    NewPair.textBox = Refresher.textFields[i].textBox;
+                    Refresher.textFields[i] = NewPair;
+                }
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(DesktopApp), "Start")]
     public static class PatchDesktopStart
     {
@@ -32,11 +61,10 @@ namespace TestDDLCMod
             StartMenuContainer.sizeDelta += new Vector2(0, 73);
             var StartMenuItemCanvas = __instance.DesktopDesktop.transform.Find("StartMenuItemCanvas") as RectTransform;
             var QuitButton = StartMenuItemCanvas.Find("QuitButton");
-            var ModsButton = UnityEngine.Object.Instantiate(QuitButton);
-            QuitButton.localPosition -= new Vector3(0, 73);
-
+            var ModsButton = UnityEngine.Object.Instantiate(QuitButton, StartMenuItemCanvas, false);
             ModsButton.name = "ModsButton";
-            ModsButton.SetParent(StartMenuItemCanvas, false);
+
+            QuitButton.localPosition -= new Vector3(0, 73);
 
             var ModsButtonText = ModsButton.Find("QuitButtonText (TMP)");
             ModsButtonText.name = "ModsButtonText (TMP)";
@@ -54,6 +82,20 @@ namespace TestDDLCMod
 
             var ModsButtonHighlightImageComponent = ModsButton.Find("HighlightImage").GetComponent<Image>();
             Resources.FindObjectsOfTypeAll<Sprite>().DoIf(sprite => sprite.name == "file icons highlight", sprite => ModsButtonHighlightImageComponent.sprite = sprite);
+
+            var ModsStartMenuButton = ModsButton.GetComponent<StartMenuButton>();
+            ModsStartMenuButton.onClick = new Button.ButtonClickedEvent();
+            var InProgressField = typeof(DesktopApp).GetField("m_StartMenuInProgress", BindingFlags.NonPublic | BindingFlags.Instance);
+            var NextAppField = typeof(DesktopApp).GetField("m_NextApp", BindingFlags.NonPublic | BindingFlags.Instance);
+            ModsStartMenuButton.onClick.AddListener(() =>
+            {
+                if (InProgressField.GetValue(__instance).Equals(true))
+                {
+                    return;
+                }
+                LauncherMain.PlayStartApp();
+                NextAppField.SetValue(__instance, PatchLauncherMainStart.ModsAppId);
+            });
         }
     }
     [HarmonyPatch()]
