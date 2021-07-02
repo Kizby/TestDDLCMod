@@ -22,7 +22,7 @@ namespace TestDDLCMod
     }
 
     [HarmonyPatch(typeof(DesktopApp), "Start")]
-    public class PatchDesktopStart
+    public static class PatchDesktopStart
     {
         static void Prefix(DesktopApp __instance)
         {
