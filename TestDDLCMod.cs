@@ -20,11 +20,12 @@ namespace TestDDLCMod
             harmony.PatchAll();
         }
     }
-    
+
     [HarmonyPatch(typeof(DesktopApp), "Start")]
     public class PatchDesktopStart
     {
-        static void Prefix(DesktopApp __instance) {
+        static void Prefix(DesktopApp __instance)
+        {
             Debug.Log("In Prefix");
             var StartMenuContainer = __instance.DesktopDesktop.transform.Find("StartMenuContainer") as RectTransform;
             StartMenuContainer.sizeDelta += new Vector2(0, 73);
@@ -48,7 +49,8 @@ namespace TestDDLCMod
         static MethodBase TargetMethod()
         {
             Type DesktopApp = typeof(DesktopApp);
-            foreach (Type NestedType in DesktopApp.GetNestedTypes(BindingFlags.NonPublic)) {
+            foreach (Type NestedType in DesktopApp.GetNestedTypes(BindingFlags.NonPublic))
+            {
                 if (NestedType.Name.Contains("StartMenuToggle"))
                 {
                     BindingFlags MethodFlags = BindingFlags.NonPublic | BindingFlags.Instance;
@@ -78,7 +80,7 @@ namespace TestDDLCMod
                 }
             }
         }
-        
+
         static float GetStartMenuHeight(DesktopApp app)
         {
             Debug.Log("In GetStartMenuHeight");
@@ -90,5 +92,4 @@ namespace TestDDLCMod
             return 69 + 74 * ButtonCount;
         }
     }
-    //*/
 }
