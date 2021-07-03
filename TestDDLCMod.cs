@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -172,6 +172,19 @@ namespace TestDDLCMod
             ModsButton.name = "ModsButton";
 
             QuitButton.localPosition -= new Vector3(0, 73);
+            
+            var SettingsNavigation = __instance.SettingsButton.navigation;
+            SettingsNavigation.selectOnDown = ModsButton.GetComponent<StartMenuButton>();
+            __instance.SettingsButton.navigation = SettingsNavigation;
+
+            var ModsNavigation = ModsButton.GetComponent<StartMenuButton>().navigation;
+            ModsNavigation.selectOnUp = __instance.SettingsButton;
+            ModsNavigation.selectOnDown = QuitButton.GetComponent<StartMenuButton>();
+            ModsButton.GetComponent<StartMenuButton>().navigation = ModsNavigation;
+            
+            var QuitNavigation = QuitButton.GetComponent<StartMenuButton>().navigation;
+            QuitNavigation.selectOnUp = ModsButton.GetComponent<StartMenuButton>();
+            QuitButton.GetComponent<StartMenuButton>().navigation = QuitNavigation;
 
             var ModsButtonText = ModsButton.Find("QuitButtonText (TMP)");
             ModsButtonText.name = "ModsButtonText (TMP)";
