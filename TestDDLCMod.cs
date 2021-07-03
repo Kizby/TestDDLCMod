@@ -1,5 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -57,6 +59,7 @@ namespace TestDDLCMod
     {
         public const FileBrowserEntries.FileBrowserEntry.Type ModArchiveType = FileBrowserEntries.FileBrowserEntry.Type.Directory + 1;
         public const FileBrowserEntries.FileBrowserEntry.Type ModDirectoryType = ModArchiveType + 1;
+        public const FileBrowserEntries.AssetReference.AssetTypes ModAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip + 1;
 
         static bool Prefix(FileBrowserApp __instance, ref Dictionary<string, List<FileBrowserEntries.FileBrowserEntry>> ___m_Directories)
         {
@@ -65,11 +68,43 @@ namespace TestDDLCMod
                 return true;
             }
             ___m_Directories = new Dictionary<string, List<FileBrowserEntries.FileBrowserEntry>>();
-            ___m_Directories.Add("", new List<FileBrowserEntries.FileBrowserEntry>
+
+            var ModsDirectory = Directory.CreateDirectory("mods");
+            var Files = new List<FileBrowserEntries.FileBrowserEntry>();
+            foreach (var ModInfo in ModsDirectory.EnumerateFileSystemInfos())
             {
-                CreateEntry("mod1", DateTime.Now, ModArchiveType, null),
-                CreateEntry("mod2", DateTime.Now, ModDirectoryType, null),
-            });
+                var ModType = FileBrowserEntries.FileBrowserEntry.Type.None;
+                var AssetType = FileBrowserEntries.AssetReference.AssetTypes.None;
+                long Size;
+                if (ModInfo.Attributes.HasFlag(FileAttributes.Directory))
+                {
+                    ModType = ModDirectoryType;
+                    AssetType = ModAssetType;
+                    Size = GetDirectorySize(ModInfo as DirectoryInfo);
+                }
+                else
+                {
+                    Size = (ModInfo as FileInfo).Length;
+                    try
+                    {
+                        using (ZipArchive Archive = new ZipArchive((ModInfo as FileInfo).OpenRead(), ZipArchiveMode.Read))
+                        {
+                            ModType = ModArchiveType;
+                            AssetType = ModAssetType;
+                        }
+                    }
+                    catch (InvalidDataException _) { }
+                }
+                Files.Add(CreateEntry(ModInfo.Name, ModInfo.LastWriteTime, ModType,
+                    new FileBrowserEntries.AssetReference()
+                    {
+                        Path = ModInfo.Name,
+                        Type = AssetType,
+                        AssetSize = Size,
+                    }));
+            }
+
+            ___m_Directories.Add("", Files);
 
             return false;
         }
@@ -84,6 +119,24 @@ namespace TestDDLCMod
                 AssetType = AssetType,
                 Asset = Asset,
             };
+        }
+
+        static long GetDirectorySize(DirectoryInfo DirectoryInfo)
+        {
+            long size = 0;
+            foreach (var FileInfo in DirectoryInfo.GetFiles())
+            {
+                size += FileInfo.Length;
+            }
+            foreach (var SubDirectoryInfo in DirectoryInfo.GetDirectories())
+            {
+                // not fucking around with symlinks
+                if (!SubDirectoryInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                {
+                    size += GetDirectorySize(SubDirectoryInfo);
+                }
+            }
+            return size;
         }
     }
 
