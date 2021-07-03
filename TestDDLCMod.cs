@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -71,7 +71,16 @@ namespace TestDDLCMod
             ___m_Directories = new Dictionary<string, List<FileBrowserEntries.FileBrowserEntry>>();
 
             var ModsDirectory = Directory.CreateDirectory("mods");
-            var Files = new List<FileBrowserEntries.FileBrowserEntry>();
+            var Files = new List<FileBrowserEntries.FileBrowserEntry>()
+            {
+                CreateEntry("Base Game", DateTime.Parse("2021-06-30T14:37:00Z"), ModDirectoryType,
+                    new FileBrowserEntries.AssetReference()
+                    {
+                        Path = "Base Game",
+                        Type = ModAssetType,
+                        AssetSize = 0,
+                    }),
+            };
             foreach (var ModInfo in ModsDirectory.EnumerateFileSystemInfos())
             {
                 var ModType = FileBrowserEntries.FileBrowserEntry.Type.None;
@@ -131,6 +140,42 @@ namespace TestDDLCMod
             return false;
         }
 
+        [HarmonyPatch("OnContextMenuOpenClicked")]
+        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            Predicate<CodeInstruction> StartPredicate = instruction => instruction.Is(OpCodes.Call,
+                AccessTools.Method(typeof(Resources), "Load", new Type[] { typeof(string), typeof(Type) }));
+            Predicate<CodeInstruction> EndPredicate = instruction => instruction.opcode == OpCodes.Stsfld;
+            bool Replacing = false;
+            foreach (var instruction in instructions)
+            {
+                if (StartPredicate(instruction))
+                {
+                    Replacing = true;
+                    yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(PatchFileBrowserApp), "LoadResource"));
+                }
+                if (Replacing)
+                {
+                    Replacing = !EndPredicate(instruction);
+                }
+                if (!Replacing)
+                {
+                    yield return instruction;
+                }
+            }
+        }
+
+        [HarmonyPatch("OnContextMenuOpenClicked")]
+        static void Postfix(ref bool ___m_SwitchToViewer)
+        {
+            if (FileBrowserApp.ViewedAsset is Mod Mod)
+            {
+                Mod.ActiveMod = Mod;
+                FileBrowserApp.ViewedAsset = null;
+                ___m_SwitchToViewer = false;
+            }
+        }
+
         static FileBrowserEntries.FileBrowserEntry CreateEntry(string Path, DateTime Modified, FileBrowserEntries.FileBrowserEntry.Type AssetType, FileBrowserEntries.AssetReference Asset)
         {
             return new FileBrowserEntries.FileBrowserEntry()
@@ -140,6 +185,7 @@ namespace TestDDLCMod
                 Modified = Modified,
                 AssetType = AssetType,
                 Asset = Asset,
+                Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Open,
             };
         }
 
@@ -159,6 +205,15 @@ namespace TestDDLCMod
                 }
             }
             return size;
+        }
+
+        static UnityEngine.Object LoadResource(string path, Type systemTypeInstance)
+        {
+            if (systemTypeInstance == typeof(Mod))
+            {
+                return new Mod(path);
+            }
+            return Resources.Load(path, systemTypeInstance);
         }
     }
 

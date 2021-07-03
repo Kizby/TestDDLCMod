@@ -4,7 +4,13 @@ using System.Text;
 
 namespace TestDDLCMod
 {
-    class Mod : UnityEngine.Object
+    public class Mod : UnityEngine.Object
     {
+        public readonly string Path;
+        public static Mod ActiveMod = null;
+        public Mod(string path)
+        {
+            Path = path;
+        }
     }
 }
