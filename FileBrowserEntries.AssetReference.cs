@@ -9,7 +9,7 @@ namespace TestDDLCMod
         [HarmonyPatch("GetTypeFromAssetType")]
         static void Postfix(FileBrowserEntries.AssetReference.AssetTypes type, ref Type __result)
         {
-            if (type == PatchFileBrowserApp.ModAssetType)
+            if (type == ModBrowserApp.ModAssetType)
             {
                 __result = typeof(Mod);
             }
@@ -19,7 +19,7 @@ namespace TestDDLCMod
         {
             if (assetObject.GetType() == typeof(Mod))
             {
-                __result = PatchFileBrowserApp.ModAssetType;
+                __result = ModBrowserApp.ModAssetType;
             }
         }
     }

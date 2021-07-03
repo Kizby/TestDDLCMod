@@ -10,10 +10,10 @@ namespace TestDDLCMod
         {
             switch (type)
             {
-                case PatchFileBrowserApp.ModArchiveType:
+                case ModBrowserApp.ModArchiveType:
                     __instance.TextFileTypeComponent.text = "Mod Archive";
                     break;
-                case PatchFileBrowserApp.ModDirectoryType:
+                case ModBrowserApp.ModDirectoryType:
                     __instance.TextFileTypeComponent.text = "Mod Directory";
                     __instance.FileTypeImage.sprite = __instance.FileFolderSprite;
                     break;
