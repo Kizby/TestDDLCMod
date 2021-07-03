@@ -103,7 +103,7 @@ namespace TestDDLCMod
             bool ReplacingLoad = false;
             foreach (var instruction in instructions)
             {
-                if (instruction.Is(OpCodes.Ldfld, AccessTools.Field(typeof(FileBrowserEntries.FileBrowserEntry), "Asset")))
+                if (instruction.Is(OpCodes.Ldfld, AccessTools.Field(typeof(FileBrowserEntries.AssetReference), "Path")))
                 {
                     DeletingPathTruncation = true;
                     yield return instruction;
@@ -111,7 +111,7 @@ namespace TestDDLCMod
                 }
                 if (DeletingPathTruncation)
                 {
-                    if (!instruction.Is(OpCodes.Ldfld, AccessTools.Field(typeof(FileBrowserEntries.AssetReference), "Type")))
+                    if (instruction.opcode != OpCodes.Stloc_3)
                     {
                         continue;
                     }
