@@ -64,7 +64,7 @@ namespace TestDDLCMod
                     return;
                 }
                 LauncherMain.PlayStartApp();
-                NextAppField.SetValue(__instance, PatchLauncherMainStart.ModsAppId);
+                NextAppField.SetValue(__instance, ModBrowserApp.ModBrowserAppId);
             });
         }
     }

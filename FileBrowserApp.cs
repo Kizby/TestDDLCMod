@@ -59,7 +59,7 @@ namespace TestDDLCMod
                             AssetType = ModAssetType;
                         }
                     }
-                    catch (InvalidDataException _) { }
+                    catch (InvalidDataException) { }
                 }
                 Files.Add(CreateEntry(ModInfo.Name, ModInfo.LastWriteTime, ModType,
                     new FileBrowserEntries.AssetReference()
