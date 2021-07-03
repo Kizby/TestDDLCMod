@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -108,7 +108,7 @@ namespace TestDDLCMod
                 Files.Add(CreateEntry(ModInfo.Name, ModInfo.LastWriteTime, ModType,
                     new FileBrowserEntries.AssetReference()
                     {
-                        Path = ModInfo.Name,
+                        Path = ModInfo.FullName,
                         Type = AssetType,
                         AssetSize = Size,
                     }));
@@ -166,13 +166,14 @@ namespace TestDDLCMod
         }
 
         [HarmonyPatch("OnContextMenuOpenClicked")]
-        static void Postfix(ref bool ___m_SwitchToViewer)
+        static void Postfix(FileBrowserApp __instance, ref bool ___m_SwitchToViewer)
         {
             if (FileBrowserApp.ViewedAsset is Mod Mod)
             {
                 Mod.ActiveMod = Mod;
                 FileBrowserApp.ViewedAsset = null;
                 ___m_SwitchToViewer = false;
+                __instance.OnFileBrowserCloseClicked();
             }
         }
 
@@ -217,11 +218,70 @@ namespace TestDDLCMod
         }
     }
 
+
+    [HarmonyPatch()]
+    public static class PatchFileBrowserAppBuildDirectory
+    {
+        static Predicate<CodeInstruction> StartPredicate = instruction => instruction.Is(OpCodes.Call, AccessTools.Method(typeof(RenpyParser.Utils), "IsConsolePlatform"));
+        static Predicate<CodeInstruction> EndPredicate = instruction => instruction.opcode == OpCodes.Stloc_3;
+
+        static MethodBase TargetMethod()
+        {
+            Type DesktopApp = typeof(FileBrowserApp);
+            foreach (Type NestedType in DesktopApp.GetNestedTypes(BindingFlags.NonPublic))
+            {
+                if (NestedType.Name.Contains("BuildDirectory"))
+                {
+                    BindingFlags MethodFlags = BindingFlags.NonPublic | BindingFlags.Instance;
+                    return NestedType.GetMethod("MoveNext", MethodFlags);
+                }
+            }
+            return null;
+        }
+
+        // Postfix is being called on an unnameable inner class, so we can't just inject private members ;-;
+        static FieldInfo ButtonsField = typeof(FileBrowserApp).GetField("m_Buttons", BindingFlags.NonPublic | BindingFlags.Instance);
+        static void Postfix(object __instance)
+        {
+            // compiler generated classes are such a fucking pain
+            var InternalType = __instance.GetType();
+            FieldInfo ThisField = null;
+            foreach (var FieldInfo in InternalType.GetFields())
+            {
+                if (FieldInfo.Name.EndsWith("__this"))
+                {
+                    ThisField = FieldInfo;
+                    break;
+                }
+            }
+            FileBrowserApp App = ThisField.GetValue(__instance) as FileBrowserApp;
+
+            // now we can use the outer FileBrowserApp
+            if (App.appId == LauncherAppId.FileBrowser)
+            {
+                return;
+            }
+            var Buttons = ButtonsField.GetValue(App) as List<FileBrowserButton>;
+            foreach (var Button in Buttons)
+            {
+                Debug.Log(Button.FileName + " vs " + Mod.ActiveMod.Path);
+                if (Button.FileName == Mod.ActiveMod.Path)
+                {
+                    Button.Select();
+                }
+                if (Button.CurrentlySelected == FileBrowserButton.State.Selected)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(FileBrowserEntries.AssetReference))]
     public static class PatchFileBrowserEntriesAssetReference
     {
         [HarmonyPatch("GetTypeFromAssetType")]
-        static void Postfix(FileBrowserEntries.AssetReference.AssetTypes type, ref System.Type __result)
+        static void Postfix(FileBrowserEntries.AssetReference.AssetTypes type, ref Type __result)
         {
             if (type == PatchFileBrowserApp.ModAssetType)
             {
@@ -269,7 +329,7 @@ namespace TestDDLCMod
             ModsButton.name = "ModsButton";
 
             QuitButton.localPosition -= new Vector3(0, 73);
-            
+
             var SettingsNavigation = __instance.SettingsButton.navigation;
             SettingsNavigation.selectOnDown = ModsButton.GetComponent<StartMenuButton>();
             __instance.SettingsButton.navigation = SettingsNavigation;
@@ -278,7 +338,7 @@ namespace TestDDLCMod
             ModsNavigation.selectOnUp = __instance.SettingsButton;
             ModsNavigation.selectOnDown = QuitButton.GetComponent<StartMenuButton>();
             ModsButton.GetComponent<StartMenuButton>().navigation = ModsNavigation;
-            
+
             var QuitNavigation = QuitButton.GetComponent<StartMenuButton>().navigation;
             QuitNavigation.selectOnUp = ModsButton.GetComponent<StartMenuButton>();
             QuitButton.GetComponent<StartMenuButton>().navigation = QuitNavigation;
