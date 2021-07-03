@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.Serialization;
 using UnityPS;
 
 namespace TestDDLCMod
@@ -16,7 +17,6 @@ namespace TestDDLCMod
         public const FileBrowserEntries.FileBrowserEntry.Type ModDirectoryType = ModArchiveType + 1;
         public const FileBrowserEntries.AssetReference.AssetTypes ModAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip + 1;
 
-        private List<FileBrowserButton> m_Buttons;
         public ModBrowserApp()
         {
             var FileBrowserApp = GetComponent<FileBrowserApp>();
@@ -51,9 +51,6 @@ namespace TestDDLCMod
                     Refresher.textFields[i] = NewPair;
                 }
             }
-
-            // steal references to private fields
-            m_Buttons = GetPrivateField<List<FileBrowserButton>>("m_Buttons");
         }
 
         public override IEnumerator PerformAppStart(CoroutineID id)
@@ -61,6 +58,7 @@ namespace TestDDLCMod
             SetPrivateField("m_Directories", CollectMods());
             yield return CallPrivateMethod<IEnumerator>("BuildDirectory", "", 0);
 
+            // default to the currently active mod
             foreach (var Button in GetPrivateField<List<FileBrowserButton>>("m_Buttons"))
             {
                 if (Button.FileName == Mod.ActiveMod.Path)
@@ -76,6 +74,17 @@ namespace TestDDLCMod
             CoroutineManager.UnregisterCoroutine(id);
             m_Starting = false;
             yield return null;
+        }
+
+        public override void OnAppClose() { }
+
+        public override void SaveLauncher(Stream stream, IFormatter formatter)
+        {
+            // nothing for now
+        }
+        public override void LoadLauncher(Stream stream, IFormatter formatter)
+        {
+            // nothing for now
         }
 
         Dictionary<string, List<FileBrowserEntries.FileBrowserEntry>> CollectMods()
