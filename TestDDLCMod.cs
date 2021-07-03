@@ -108,7 +108,7 @@ namespace TestDDLCMod
                 Files.Add(CreateEntry(ModInfo.Name, ModInfo.LastWriteTime, ModType,
                     new FileBrowserEntries.AssetReference()
                     {
-                        Path = ModInfo.FullName,
+                        Path = ModInfo.Name,
                         Type = AssetType,
                         AssetSize = Size,
                     }));
@@ -143,22 +143,34 @@ namespace TestDDLCMod
         [HarmonyPatch("OnContextMenuOpenClicked")]
         static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
         {
-            Predicate<CodeInstruction> StartPredicate = instruction => instruction.Is(OpCodes.Call,
-                AccessTools.Method(typeof(Resources), "Load", new Type[] { typeof(string), typeof(Type) }));
-            Predicate<CodeInstruction> EndPredicate = instruction => instruction.opcode == OpCodes.Stsfld;
-            bool Replacing = false;
+            bool DeletingPathTruncation = false;
+            bool ReplacingLoad = false;
             foreach (var instruction in instructions)
             {
-                if (StartPredicate(instruction))
+                if (instruction.Is(OpCodes.Ldfld, AccessTools.Field(typeof(FileBrowserEntries.FileBrowserEntry), "Asset")))
                 {
-                    Replacing = true;
+                    DeletingPathTruncation = true;
+                    yield return instruction;
+                    continue;
+                }
+                if (DeletingPathTruncation)
+                {
+                    if (!instruction.Is(OpCodes.Ldfld, AccessTools.Field(typeof(FileBrowserEntries.AssetReference), "Type")))
+                    {
+                        continue;
+                    }
+                    DeletingPathTruncation = false;
+                }
+                if (instruction.Is(OpCodes.Call, AccessTools.Method(typeof(Resources), "Load", new Type[] { typeof(string), typeof(Type) })))
+                {
+                    ReplacingLoad = true;
                     yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(PatchFileBrowserApp), "LoadResource"));
                 }
-                if (Replacing)
+                if (ReplacingLoad)
                 {
-                    Replacing = !EndPredicate(instruction);
+                    ReplacingLoad = instruction.opcode != OpCodes.Stsfld;
                 }
-                if (!Replacing)
+                if (!ReplacingLoad)
                 {
                     yield return instruction;
                 }
@@ -214,7 +226,7 @@ namespace TestDDLCMod
             {
                 return new Mod(path);
             }
-            return Resources.Load(path, systemTypeInstance);
+            return Resources.Load(Path.ChangeExtension(path, null), systemTypeInstance);
         }
     }
 
@@ -264,7 +276,6 @@ namespace TestDDLCMod
             var Buttons = ButtonsField.GetValue(App) as List<FileBrowserButton>;
             foreach (var Button in Buttons)
             {
-                Debug.Log(Button.FileName + " vs " + Mod.ActiveMod.Path);
                 if (Button.FileName == Mod.ActiveMod.Path)
                 {
                     Button.Select();
