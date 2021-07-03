@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace TestDDLCMod
+﻿namespace TestDDLCMod
 {
     public class Mod : UnityEngine.Object
     {
