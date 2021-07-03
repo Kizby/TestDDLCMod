@@ -37,6 +37,7 @@ namespace TestDDLCMod
             ModBrowserApp.appId = ModsAppId;
             __instance.apps.Add(ModBrowserApp);
 
+            ModBrowserApp.HeaderBarPrefab = UnityEngine.Object.Instantiate(ModBrowserApp.HeaderBarPrefab);
             var Refresher = ModBrowserApp.HeaderBarPrefab.GetComponent<WindowBarTextRefresher>();
             for (var i = 0; i < Refresher.textFields.Count; ++i)
             {
@@ -47,6 +48,59 @@ namespace TestDDLCMod
                     NewPair.textBox = Refresher.textFields[i].textBox;
                     Refresher.textFields[i] = NewPair;
                 }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(FileBrowserApp), "CacheAllDirectories")]
+    public static class PatchFileBrowserAppCacheAllDirectories
+    {
+        public const FileBrowserEntries.FileBrowserEntry.Type ModArchiveType = FileBrowserEntries.FileBrowserEntry.Type.Directory + 1;
+        public const FileBrowserEntries.FileBrowserEntry.Type ModDirectoryType = ModArchiveType + 1;
+
+        static bool Prefix(FileBrowserApp __instance, ref Dictionary<string, List<FileBrowserEntries.FileBrowserEntry>> ___m_Directories)
+        {
+            if (__instance.appId == LauncherAppId.FileBrowser)
+            {
+                return true;
+            }
+            ___m_Directories = new Dictionary<string, List<FileBrowserEntries.FileBrowserEntry>>();
+            ___m_Directories.Add("", new List<FileBrowserEntries.FileBrowserEntry>
+            {
+                CreateEntry("mod1", DateTime.Now, ModArchiveType, null),
+                CreateEntry("mod2", DateTime.Now, ModDirectoryType, null),
+            });
+
+            return false;
+        }
+
+        static FileBrowserEntries.FileBrowserEntry CreateEntry(string Path, DateTime Modified, FileBrowserEntries.FileBrowserEntry.Type AssetType, FileBrowserEntries.AssetReference Asset)
+        {
+            return new FileBrowserEntries.FileBrowserEntry()
+            {
+                Path = Path,
+                Visible = true,
+                Modified = Modified,
+                AssetType = AssetType,
+                Asset = Asset,
+            };
+        }
+    }
+
+    [HarmonyPatch(typeof(FileBrowserButton), "SetFileType")]
+    public static class PatchFileBrowserButtonSetFileType
+    {
+        static void Postfix(FileBrowserButton __instance, FileBrowserEntries.FileBrowserEntry.Type type)
+        {
+            switch (type)
+            {
+                case PatchFileBrowserAppCacheAllDirectories.ModArchiveType:
+                    __instance.TextFileTypeComponent.text = "Mod Archive";
+                    break;
+                case PatchFileBrowserAppCacheAllDirectories.ModDirectoryType:
+                    __instance.TextFileTypeComponent.text = "Mod Directory";
+                    __instance.FileTypeImage.sprite = __instance.FileFolderSprite;
+                    break;
             }
         }
     }
