@@ -54,13 +54,14 @@ namespace TestDDLCMod
         }
     }
 
-    [HarmonyPatch(typeof(FileBrowserApp), "CacheAllDirectories")]
-    public static class PatchFileBrowserAppCacheAllDirectories
+    [HarmonyPatch(typeof(FileBrowserApp))]
+    public static class PatchFileBrowserApp
     {
         public const FileBrowserEntries.FileBrowserEntry.Type ModArchiveType = FileBrowserEntries.FileBrowserEntry.Type.Directory + 1;
         public const FileBrowserEntries.FileBrowserEntry.Type ModDirectoryType = ModArchiveType + 1;
         public const FileBrowserEntries.AssetReference.AssetTypes ModAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip + 1;
 
+        [HarmonyPatch("CacheAllDirectories")]
         static bool Prefix(FileBrowserApp __instance, ref Dictionary<string, List<FileBrowserEntries.FileBrowserEntry>> ___m_Directories)
         {
             if (__instance.appId == LauncherAppId.FileBrowser)
@@ -109,6 +110,27 @@ namespace TestDDLCMod
             return false;
         }
 
+        [HarmonyPatch("GetEntry")]
+        static bool Prefix(FileBrowserApp __instance, string path, ref FileBrowserEntries.FileBrowserEntry __result,
+            ref Dictionary<string, List<FileBrowserEntries.FileBrowserEntry>> ___m_Directories)
+        {
+            if (__instance.appId == LauncherAppId.FileBrowser)
+            {
+                return true;
+            }
+
+            __result = null;
+            foreach (var Entry in ___m_Directories[""])
+            {
+                if (Entry.Path == path)
+                {
+                    __result = Entry;
+                    break;
+                }
+            }
+            return false;
+        }
+
         static FileBrowserEntries.FileBrowserEntry CreateEntry(string Path, DateTime Modified, FileBrowserEntries.FileBrowserEntry.Type AssetType, FileBrowserEntries.AssetReference Asset)
         {
             return new FileBrowserEntries.FileBrowserEntry()
@@ -140,6 +162,27 @@ namespace TestDDLCMod
         }
     }
 
+    [HarmonyPatch(typeof(FileBrowserEntries.AssetReference))]
+    public static class PatchFileBrowserEntriesAssetReference
+    {
+        [HarmonyPatch("GetTypeFromAssetType")]
+        static void Postfix(FileBrowserEntries.AssetReference.AssetTypes type, ref System.Type __result)
+        {
+            if (type == PatchFileBrowserApp.ModAssetType)
+            {
+                __result = typeof(Mod);
+            }
+        }
+        [HarmonyPatch("GetAssetTypeFromObject")]
+        static void Postfix(UnityEngine.Object assetObject, ref FileBrowserEntries.AssetReference.AssetTypes __result)
+        {
+            if (assetObject.GetType() == typeof(Mod))
+            {
+                __result = PatchFileBrowserApp.ModAssetType;
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(FileBrowserButton), "SetFileType")]
     public static class PatchFileBrowserButtonSetFileType
     {
@@ -147,10 +190,10 @@ namespace TestDDLCMod
         {
             switch (type)
             {
-                case PatchFileBrowserAppCacheAllDirectories.ModArchiveType:
+                case PatchFileBrowserApp.ModArchiveType:
                     __instance.TextFileTypeComponent.text = "Mod Archive";
                     break;
-                case PatchFileBrowserAppCacheAllDirectories.ModDirectoryType:
+                case PatchFileBrowserApp.ModDirectoryType:
                     __instance.TextFileTypeComponent.text = "Mod Directory";
                     __instance.FileTypeImage.sprite = __instance.FileFolderSprite;
                     break;
