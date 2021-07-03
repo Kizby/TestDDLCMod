@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -206,7 +206,6 @@ namespace TestDDLCMod
     {
         static void Prefix(DesktopApp __instance)
         {
-            Debug.Log("In Prefix");
             var StartMenuContainer = __instance.DesktopDesktop.transform.Find("StartMenuContainer") as RectTransform;
             StartMenuContainer.sizeDelta += new Vector2(0, 73);
             var StartMenuItemCanvas = __instance.DesktopDesktop.transform.Find("StartMenuItemCanvas") as RectTransform;
@@ -304,7 +303,6 @@ namespace TestDDLCMod
 
         static float GetStartMenuHeight(DesktopApp app)
         {
-            Debug.Log("In GetStartMenuHeight");
             var ButtonCount = app.ButtonTexts.Count;
             if (RenpyParser.Utils.IsConsolePlatform())
             {
