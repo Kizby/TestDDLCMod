@@ -21,6 +21,14 @@ namespace TestDDLCMod
             WindowRectTransform = FileBrowserApp.WindowRectTransform;
             FadeInImage = FileBrowserApp.FadeInImage;
 
+            // FileBrowserApp fields
+            ListParentPanel = FileBrowserApp.ListParentPanel;
+            FileListPanel = FileBrowserApp.FileListPanel;
+            BottomBarPrefab = FileBrowserApp.BottomBarPrefab;
+            FileBrowserButtonPrefab = FileBrowserApp.FileBrowserButtonPrefab;
+            BackgroundImage = FileBrowserApp.BackgroundImage;
+
+            // hack our own HeaderBarPrefab to not say "Files"
             HeaderBarPrefab = Instantiate(FileBrowserApp.HeaderBarPrefab);
             var Refresher = HeaderBarPrefab.GetComponent<WindowBarTextRefresher>();
             for (var i = 0; i < Refresher.textFields.Count; ++i)
