@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -29,8 +29,8 @@ namespace TestDDLCMod
         static void Prefix(LauncherMain __instance)
         {
             var FileBrowserCanvas = __instance.gameObject.transform.Find("FileBrowserCanvas");
-            var ModBrowserCanvas = UnityEngine.Object.Instantiate(FileBrowserCanvas);
-            ModBrowserCanvas.SetParent(FileBrowserCanvas.parent, false);
+            var ModBrowserCanvas = UnityEngine.Object.Instantiate(FileBrowserCanvas, FileBrowserCanvas.parent, false);
+            ModBrowserCanvas.SetSiblingIndex(FileBrowserCanvas.GetSiblingIndex());
             ModBrowserCanvas.name = "ModBrowserCanvas";
 
             var ModBrowserApp = ModBrowserCanvas.GetComponent<FileBrowserApp>();
