@@ -18,6 +18,7 @@ namespace TestDDLCMod
 
         private const string MOD_CACHE_NAME = "currentMod.txt";
         private static FileBrowserEntries BaseGameEntries;
+        private static FileBrowserEntries BaseGameDefaultEntries;
         private static Mod _activeMod = new Mod("Base Game");
 
         private static string PersistentDataPath => Path.Combine(PlatformManager.FileSystem.PersistentDataPath, "mods");
@@ -75,6 +76,7 @@ namespace TestDDLCMod
                 name = Encoding.UTF8.GetString(bytes);
             }
             BaseGameEntries = VirtualFileSystem.Entries;
+            BaseGameDefaultEntries = GameObject.Find("LauncherMainCanvas").GetComponent<LauncherMain>().Entries;
             ActiveMod = new Mod(name);
         }
 
@@ -115,14 +117,18 @@ namespace TestDDLCMod
 
                 Entries = ScriptableObject.CreateInstance<FileBrowserEntries>();
                 Entries.Entries = new List<FileBrowserEntries.FileBrowserEntry>();
+                var entryNames = new HashSet<string>();
+                Entries.CreateEntryAt("empty");
                 foreach (var Directory in Directory.EnumerateDirectories(DataPath, "*", SearchOption.AllDirectories))
                 {
                     var InnerPath = Directory.Substring(DataPath.Length + 1);
+                    entryNames.Add(InnerPath);
                     Entries.CreateEntryAt(Path.Combine(InnerPath, "empty"));
                 }
                 foreach (var File in Directory.EnumerateFiles(DataPath, "*", SearchOption.AllDirectories))
                 {
                     var InnerPath = File.Substring(DataPath.Length + 1);
+                    entryNames.Add(InnerPath);
                     var Entry = Entries.CreateEntryAt(InnerPath);
                     var Info = new FileInfo(File);
                     Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Open | FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
@@ -159,6 +165,18 @@ namespace TestDDLCMod
                         Type = AssetAssetType,
                     };
                 }
+
+                foreach (var Entry in BaseGameDefaultEntries.Entries)
+                {
+                    if(Entry.Path.StartsWith("characters") ||
+                        Entry.Path.StartsWith("game") && Entry.Path.EndsWith(".rpa") && Entry.Path != "game/scripts.rpa")
+                    {
+                        if (!entryNames.Contains(Entry.Path))
+                        {
+                            Entries.Entries.Add(Clone(Entry));
+                        }
+                    }
+                }
             }
             VirtualFileSystem.Entries = Entries;
         }
@@ -183,11 +201,31 @@ namespace TestDDLCMod
             }
             using (var archive = new ZipArchive(File.OpenRead(Path.Combine(LocalDataPath, Name))))
             {
+                string commonPrefix = null;
+                foreach (var Entry in archive.Entries)
+                {
+                    var Name = Entry.FullName.Replace("\\", "/");
+                    if (commonPrefix == null)
+                    {
+                        commonPrefix = Name.Substring(0, Name.LastIndexOf('/') + 1);
+                    }
+                    else
+                    {
+                        while (!Name.StartsWith(commonPrefix))
+                        {
+                            commonPrefix = commonPrefix.Substring(0, commonPrefix.LastIndexOf('/') + 1);
+                        }
+                    }
+                    if (commonPrefix == "")
+                    {
+                        break;
+                    }
+                }
                 var gameDirectory = archive.Entries
                     .Select(Entry => Entry.FullName.Replace("\\", "/")) // fucking path separators
                     .Where(Name => Name.StartsWith("game/") || Name.Contains("/game/")) // files in the game directory
                     .Select(Name => Name.StartsWith("game/") ? "game/" : Name.Substring(0, Name.IndexOf("/game/") + 6)) // trim everything past game/
-                    .Aggregate((Name1, Name2) =>
+                    .Aggregate(commonPrefix, (Name1, Name2) =>
                     {
                         var diff = Name1.Count(c => c == '/') - Name2.Count(c => c == '/');
                         if (diff < 0)
@@ -201,8 +239,8 @@ namespace TestDDLCMod
                         return Name1.CompareTo(Name2) < 0 ? Name1 : Name2;
                     }); // pick the one closest to the root (alphabetical in ties, tho wtf would put multiple parallel game directories in their mod -.-)
                 var extractionFolder = DataPath;
-                string baseDirectory = "";
-                if (gameDirectory == "")
+                string baseDirectory = commonPrefix;
+                if (gameDirectory == commonPrefix)
                 {
                     extractionFolder = Path.Combine(DataPath, "game");
                 }
@@ -226,6 +264,27 @@ namespace TestDDLCMod
                     }
                 }
             }
+        }
+
+        private static FileBrowserEntries.FileBrowserEntry Clone(FileBrowserEntries.FileBrowserEntry Entry)
+        {
+            return new FileBrowserEntries.FileBrowserEntry()
+            {
+                AccessHour = Entry.AccessHour,
+                AccessMinute = Entry.AccessMinute,
+                Asset = new FileBrowserEntries.AssetReference()
+                {
+                    Path = Entry.Asset.Path,
+                    Type = Entry.Asset.Type,
+                    AssetSize = Entry.Asset.AssetSize,
+                },
+                AssetType = Entry.AssetType,
+                Flags = Entry.Flags,
+                Modified = Entry.Modified,
+                ModifiedUTC = Entry.ModifiedUTC,
+                Path = Entry.Path,
+                Visible = Entry.Visible,
+            };
         }
 
         public static bool operator ==(Mod a, Mod b) => a.Name == b.Name;
