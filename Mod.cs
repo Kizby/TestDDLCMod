@@ -17,7 +17,7 @@ namespace TestDDLCMod
 
         private const string MOD_CACHE_NAME = "currentMod.txt";
         private static FileBrowserEntries BaseGameEntries;
-        private static Mod _activeMod = new Mod("Base Game");
+        private static Mod _activeMod;
 
         private static string PersistentDataPath => Path.Combine(PlatformManager.FileSystem.PersistentDataPath, "mods");
         private static string LocalDataPath => "mods";
@@ -72,7 +72,7 @@ namespace TestDDLCMod
                 name = Encoding.UTF8.GetString(bytes);
             }
             BaseGameEntries = GameObject.Find("LauncherMainCanvas").GetComponent<LauncherMain>().Entries;
-            _activeMod = new Mod(name);
+            ActiveMod = new Mod(name);
         }
 
         public Mod(string name)
