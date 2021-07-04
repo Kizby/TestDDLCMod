@@ -1,4 +1,6 @@
 ﻿using HarmonyLib;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace TestDDLCMod
 {
@@ -10,6 +12,11 @@ namespace TestDDLCMod
         {
             switch (type)
             {
+                case ModBrowserApp.ModBaseGameType:
+                    __instance.TextFileTypeComponent.text = "";
+                    // dunno a cleaner way to grab this sprite
+                    __instance.FileTypeImage.sprite = GameObject.Find("StartMenuButton").transform.Find("Image").GetComponent<Image>().sprite;
+                    break;
                 case ModBrowserApp.ModArchiveType:
                     __instance.TextFileTypeComponent.text = "Mod Archive";
                     break;

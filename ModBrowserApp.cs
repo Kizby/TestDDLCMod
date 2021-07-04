@@ -13,7 +13,8 @@ namespace TestDDLCMod
     public class ModBrowserApp : FileBrowserApp
     {
         public const LauncherAppId ModBrowserAppId = LauncherAppId.ContinueUpdate + 1;
-        public const FileBrowserEntries.FileBrowserEntry.Type ModArchiveType = FileBrowserEntries.FileBrowserEntry.Type.Directory + 1;
+        public const FileBrowserEntries.FileBrowserEntry.Type ModBaseGameType = FileBrowserEntries.FileBrowserEntry.Type.Directory + 1;
+        public const FileBrowserEntries.FileBrowserEntry.Type ModArchiveType = ModBaseGameType + 1;
         public const FileBrowserEntries.FileBrowserEntry.Type ModDirectoryType = ModArchiveType + 1;
         public const FileBrowserEntries.AssetReference.AssetTypes ModAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip + 1;
 
@@ -92,7 +93,7 @@ namespace TestDDLCMod
             var ModsDirectory = Directory.CreateDirectory("mods");
             var Files = new List<FileBrowserEntries.FileBrowserEntry>()
             {
-                CreateEntry("Base Game", DateTime.Parse("2021-06-30T14:37:00Z"), ModDirectoryType,
+                CreateEntry("Base Game", DateTime.Parse("2021-06-30T14:37:00Z"), ModBaseGameType,
                     new FileBrowserEntries.AssetReference()
                     {
                         Path = "Base Game",
