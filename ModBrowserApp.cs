@@ -56,7 +56,7 @@ namespace TestDDLCMod
             // default to the currently active mod
             foreach (var Button in GetPrivateField<List<FileBrowserButton>>("m_Buttons"))
             {
-                if (Button.FileName == Mod.ActiveMod.Path)
+                if (Button.FileName == Mod.ActiveMod.Name)
                 {
                     Button.Select();
                 }
