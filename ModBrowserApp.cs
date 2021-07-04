@@ -35,27 +35,21 @@ namespace TestDDLCMod
             // FileBrowserApp fields
             ListParentPanel = FileBrowserApp.ListParentPanel;
             FileListPanel = FileBrowserApp.FileListPanel;
-            BottomBarPrefab = FileBrowserApp.BottomBarPrefab;
-            FileBrowserButtonPrefab = FileBrowserApp.FileBrowserButtonPrefab;
             BackgroundImage = FileBrowserApp.BackgroundImage;
 
-            // hack our own HeaderBarPrefab to not say "Files"
-            HeaderBarPrefab = Instantiate(FileBrowserApp.HeaderBarPrefab);
-            var Refresher = HeaderBarPrefab.GetComponent<WindowBarTextRefresher>();
-            for (var i = 0; i < Refresher.textFields.Count; ++i)
-            {
-                if (Refresher.textFields[i].text == "Files")
-                {
-                    WindowBarTextRefresher.TextStringPair NewPair;
-                    NewPair.text = "Mods";
-                    NewPair.textBox = Refresher.textFields[i].textBox;
-                    Refresher.textFields[i] = NewPair;
-                }
-            }
+            // Prefabs (so we can just use FileBrowserApp's initialization code)
+            HeaderBarPrefab = FileBrowserApp.HeaderBarPrefab;
+            MobileHeaderBarPrefab = FileBrowserApp.MobileHeaderBarPrefab;
+            BottomBarPrefab = FileBrowserApp.BottomBarPrefab;
+            MobileBottomBarPrefab = FileBrowserApp.MobileBottomBarPrefab;
+            FileBrowserButtonPrefab = FileBrowserApp.FileBrowserButtonPrefab;
+            MobileFileBrowserButtonPrefab = FileBrowserApp.MobileFileBrowserButtonPrefab;
         }
 
         public override IEnumerator PerformAppStart(CoroutineID id)
         {
+            FixupChildren();
+
             SetPrivateField("m_Directories", CollectMods());
             yield return CallPrivateMethod<IEnumerator>("BuildDirectory", "", 0);
 
@@ -86,6 +80,29 @@ namespace TestDDLCMod
         public override void LoadLauncher(Stream stream, IFormatter formatter)
         {
             // nothing for now
+        }
+
+        void FixupChildren()
+        {
+            string Prefix = (LauncherMain.IsMobileVersion() ? "Mobile" : "");
+            ListParentPanel.transform.Find(Prefix + "BottomBarPrefab(Clone)").gameObject.SetActive(false); // don't need Delete or Open buttons
+
+            var HeaderBar = ListParentPanel.transform.Find(Prefix + "HeaderBarPrefab(Clone)");
+
+            // title bar should say Mods, not Files
+            var Refresher = HeaderBar.GetComponent<WindowBarTextRefresher>();
+            for (var i = 0; i < Refresher.textFields.Count; ++i)
+            {
+                if (Refresher.textFields[i].text == "Files")
+                {
+                    Refresher.textFields[i] = new WindowBarTextRefresher.TextStringPair()
+                    {
+                        text = "Mods",
+                        textBox = Refresher.textFields[i].textBox,
+                    };
+                }
+            }
+            Refresher.RefreshText();
         }
 
         Dictionary<string, List<FileBrowserEntries.FileBrowserEntry>> CollectMods()
