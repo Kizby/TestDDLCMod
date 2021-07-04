@@ -18,7 +18,7 @@ namespace TestDDLCMod
         public const FileBrowserEntries.FileBrowserEntry.Type ModDirectoryType = ModArchiveType + 1;
         public const FileBrowserEntries.AssetReference.AssetTypes ModAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip + 1;
 
-        public ModBrowserApp()
+        public void Awake()
         {
             var FileBrowserApp = GetComponent<FileBrowserApp>();
 
@@ -44,6 +44,8 @@ namespace TestDDLCMod
             MobileBottomBarPrefab = FileBrowserApp.MobileBottomBarPrefab;
             FileBrowserButtonPrefab = FileBrowserApp.FileBrowserButtonPrefab;
             MobileFileBrowserButtonPrefab = FileBrowserApp.MobileFileBrowserButtonPrefab;
+
+            Mod.InitializeMods();
         }
 
         public override IEnumerator PerformAppStart(CoroutineID id)
