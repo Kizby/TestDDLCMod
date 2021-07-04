@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection.Emit;
 using UnityEngine;
+using UnityEngine.Networking;
 
 namespace TestDDLCMod
 {
@@ -87,7 +88,59 @@ namespace TestDDLCMod
             {
                 return new Mod(path);
             }
-            return Resources.Load(Path.ChangeExtension(path, null), systemTypeInstance);
+            if (!Mod.IsModded())
+            {
+                return Resources.Load(Path.ChangeExtension(path, null), systemTypeInstance);
+            }
+            path = Path.Combine(Mod.ActiveMod.DataPath, path);
+            if (systemTypeInstance == typeof(TextAsset))
+            {
+                return LoadLocalTextAsset(path);
+            }
+            if (systemTypeInstance == typeof(Sprite))
+            {
+                return LoadLocalSprite(path);
+            }
+            if (systemTypeInstance == typeof(AudioClip))
+            {
+                return LoadLocalAudioClip(path);
+            }
+            return null;
+        }
+
+        static UnityEngine.Object LoadLocalTextAsset(string path)
+        {
+            return new TextAsset(File.ReadAllText(path));
+        }
+        static UnityEngine.Object LoadLocalSprite(string path)
+        {
+            byte[] bytes = File.ReadAllBytes(path);
+            var texture = new Texture2D(2, 2);
+            if (!texture.LoadImage(bytes))
+            {
+                return null;
+            }
+            return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0, 0));
+        }
+        static UnityEngine.Object LoadLocalAudioClip(string path)
+        {
+            var audioType = AudioType.UNKNOWN;
+            switch (Path.GetExtension(path))
+            {
+                case ".ogg": audioType = AudioType.OGGVORBIS; break;
+                case ".mp3": audioType = AudioType.MPEG; break;
+            }
+            using (var request = UnityWebRequestMultimedia.GetAudioClip(new Uri(path).AbsoluteUri, audioType))
+            {
+                request.SendWebRequest();
+                while (!request.isDone) { }
+                if (!request.isHttpError)
+                {
+                    return DownloadHandlerAudioClip.GetContent(request);
+                }
+            }
+            Debug.LogWarning("Can't open: " + path);
+            return null;
         }
     }
 }
