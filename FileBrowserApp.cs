@@ -111,9 +111,11 @@ namespace TestDDLCMod
         static UnityEngine.Object LoadLocalTextAsset(string path)
         {
             string text = File.ReadAllText(path);
-            if (text.Length > 50000)
+            if (text.Length > 40000)
             {
-                text = text.Substring(0, 50000) + "\n... (sorry, performance of this text box tanks after more characters ;-;)";
+                text = text.Substring(0, 20000) +
+                    "\n...\nsorry, performance of this text box tanks if we don't omit this ;-;\n...\n" +
+                    text.Substring(text.Length - 20000);
             }
             return new TextAsset(text);
         }
