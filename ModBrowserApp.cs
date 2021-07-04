@@ -44,7 +44,11 @@ namespace TestDDLCMod
             MobileBottomBarPrefab = FileBrowserApp.MobileBottomBarPrefab;
             FileBrowserButtonPrefab = FileBrowserApp.FileBrowserButtonPrefab;
             MobileFileBrowserButtonPrefab = FileBrowserApp.MobileFileBrowserButtonPrefab;
+        }
 
+        public new void Start()
+        {
+            base.Start();
             Mod.InitializeMods();
         }
 

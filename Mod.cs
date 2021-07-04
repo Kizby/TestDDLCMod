@@ -1,4 +1,5 @@
 ﻿using RenpyLauncher;
+using RenpyParser;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -17,7 +18,7 @@ namespace TestDDLCMod
 
         private const string MOD_CACHE_NAME = "currentMod.txt";
         private static FileBrowserEntries BaseGameEntries;
-        private static Mod _activeMod;
+        private static Mod _activeMod = new Mod("Base Game");
 
         private static string PersistentDataPath => Path.Combine(PlatformManager.FileSystem.PersistentDataPath, "mods");
         private static string LocalDataPath => "mods";
@@ -40,7 +41,7 @@ namespace TestDDLCMod
             get => _activeMod;
             set
             {
-                if (_activeMod == value)
+                if (_activeMod == value && _activeMod.Entries != null)
                 {
                     return;
                 }
@@ -54,6 +55,8 @@ namespace TestDDLCMod
                 _activeMod.Activate();
             }
         }
+
+        public static bool IsModded() => ActiveMod.Type != ModBrowserApp.ModBaseGameType;
 
         public static void InitializeMods()
         {
@@ -71,7 +74,7 @@ namespace TestDDLCMod
                 }
                 name = Encoding.UTF8.GetString(bytes);
             }
-            BaseGameEntries = GameObject.Find("LauncherMainCanvas").GetComponent<LauncherMain>().Entries;
+            BaseGameEntries = VirtualFileSystem.Entries;
             ActiveMod = new Mod(name);
         }
 
@@ -114,11 +117,13 @@ namespace TestDDLCMod
                 Entries.Entries = new List<FileBrowserEntries.FileBrowserEntry>();
                 foreach (var Directory in Directory.EnumerateDirectories(DataPath, "*", SearchOption.AllDirectories))
                 {
-                    Entries.CreateEntryAt(Path.Combine(Directory, "empty"));
+                    var InnerPath = Directory.Substring(DataPath.Length + 1);
+                    Entries.CreateEntryAt(Path.Combine(InnerPath, "empty"));
                 }
                 foreach (var File in Directory.EnumerateFiles(DataPath, "*", SearchOption.AllDirectories))
                 {
-                    var Entry = Entries.CreateEntryAt(File);
+                    var InnerPath = File.Substring(DataPath.Length + 1);
+                    var Entry = Entries.CreateEntryAt(InnerPath);
                     var Info = new FileInfo(File);
                     Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Open | FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
                     FileBrowserEntries.AssetReference.AssetTypes AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.None;
@@ -149,12 +154,13 @@ namespace TestDDLCMod
                     Entry.ModifiedUTC = Info.LastWriteTimeUtc.Ticks;
                     Entry.Asset = new FileBrowserEntries.AssetReference()
                     {
-                        Path = File,
+                        Path = InnerPath,
                         AssetSize = Info.Length,
                         Type = AssetAssetType,
                     };
                 }
             }
+            VirtualFileSystem.Entries = Entries;
         }
 
         public void Reset()
