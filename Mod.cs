@@ -21,7 +21,9 @@ namespace TestDDLCMod
         private static FileBrowserEntries BaseGameDefaultEntries;
         private static Mod _activeMod = new Mod("Base Game");
 
-        private static string PersistentDataPath => Path.Combine(PlatformManager.FileSystem.PersistentDataPath, "mods");
+        // Apparently UnityPS just uses / rather than the system divider ;-;
+        // so we confuse the base game if we do Path.Combine(PlatformManager.FileSystem.PersistentDataPath, "mods") on Windows
+        private static string PersistentDataPath => PlatformManager.FileSystem.PersistentDataPath + "/mods";
         private static string LocalDataPath => "mods";
         public string DataPath
         {
@@ -34,7 +36,7 @@ namespace TestDDLCMod
                     case ModBrowserApp.ModDirectoryType: BasePath = LocalDataPath; break;
                     default: throw new InvalidDataException();
                 }
-                return Path.Combine(BasePath, Name);
+                return BasePath + "/" + Name;
             }
         }
         public static Mod ActiveMod
