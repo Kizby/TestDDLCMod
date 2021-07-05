@@ -157,7 +157,7 @@ namespace TestDDLCMod
                             break;
                     }
                     Entry.Modified = Info.LastWriteTime;
-                    Entry.ModifiedUTC = Info.LastWriteTimeUtc.Ticks;
+                    Entry.ModifiedUTC = Entry.Modified.ToFileTimeUtc();
                     Entry.Asset = new FileBrowserEntries.AssetReference()
                     {
                         Path = InnerPath,
@@ -268,6 +268,13 @@ namespace TestDDLCMod
 
         private static FileBrowserEntries.FileBrowserEntry Clone(FileBrowserEntries.FileBrowserEntry Entry)
         {
+            var Modified = Entry.Modified;
+            var ModifiedUTC = Entry.ModifiedUTC;
+            if (ModifiedUTC == 0)
+            {
+                Modified = System.DateTime.Now;
+                ModifiedUTC = Modified.ToFileTimeUtc();
+            }
             return new FileBrowserEntries.FileBrowserEntry()
             {
                 AccessHour = Entry.AccessHour,
@@ -280,8 +287,8 @@ namespace TestDDLCMod
                 },
                 AssetType = Entry.AssetType,
                 Flags = Entry.Flags,
-                Modified = Entry.Modified,
-                ModifiedUTC = Entry.ModifiedUTC,
+                Modified = Modified,
+                ModifiedUTC = ModifiedUTC,
                 Path = Entry.Path,
                 Visible = Entry.Visible,
             };
