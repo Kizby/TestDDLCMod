@@ -1,5 +1,7 @@
 ﻿using HarmonyLib;
 using RenpyLauncher;
+using System;
+using UnityEngine;
 
 namespace TestDDLCMod
 {
@@ -17,6 +19,8 @@ namespace TestDDLCMod
             var ModBrowserApp = ModBrowserCanvas.gameObject.AddComponent<ModBrowserApp>();
             UnityEngine.Object.Destroy(ModBrowserCanvas.GetComponent<FileBrowserApp>());
             __instance.apps.Add(ModBrowserApp);
+
+            Mod.InitializeMods();
         }
 
         [HarmonyPatch("SaveLauncher")]
@@ -29,6 +33,15 @@ namespace TestDDLCMod
         static void Postfix(LauncherMain __instance, LauncherApp __state)
         {
             __instance.apps.Add(__state);
+        }
+    }
+
+    [HarmonyPatch(typeof(Debug), "LogError", new Type[] { typeof(object) })]
+    public static class PatchLogError
+    {
+        static void Prefix()
+        {
+            Debug.Log(Environment.StackTrace);
         }
     }
 }

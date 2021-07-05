@@ -46,12 +46,6 @@ namespace TestDDLCMod
             MobileFileBrowserButtonPrefab = FileBrowserApp.MobileFileBrowserButtonPrefab;
         }
 
-        public new void Start()
-        {
-            base.Start();
-            Mod.InitializeMods();
-        }
-
         public override IEnumerator PerformAppStart(CoroutineID id)
         {
             FixupChildren();
