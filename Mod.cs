@@ -176,7 +176,7 @@ namespace TestDDLCMod
 
                 foreach (var Entry in BaseGameDefaultEntries.Entries)
                 {
-                    if(Entry.Path.StartsWith("characters") ||
+                    if (Entry.Path.StartsWith("characters") ||
                         Entry.Path.StartsWith("game") && Entry.Path.EndsWith(".rpa") && Entry.Path != "game/scripts.rpa")
                     {
                         if (!entryNames.Contains(Entry.Path))

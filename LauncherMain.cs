@@ -1,7 +1,5 @@
 ﻿using HarmonyLib;
 using RenpyLauncher;
-using System;
-using UnityEngine;
 
 namespace TestDDLCMod
 {
@@ -33,15 +31,6 @@ namespace TestDDLCMod
         static void Postfix(LauncherMain __instance, LauncherApp __state)
         {
             __instance.apps.Add(__state);
-        }
-    }
-
-    [HarmonyPatch(typeof(Debug), "LogError", new Type[] { typeof(object) })]
-    public static class PatchLogError
-    {
-        static void Prefix()
-        {
-            Debug.Log(Environment.StackTrace);
         }
     }
 }
