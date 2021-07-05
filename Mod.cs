@@ -74,6 +74,11 @@ namespace TestDDLCMod
                     file.Read(bytes, 0, bytes.Length);
                 }
                 name = Encoding.UTF8.GetString(bytes);
+                if (name != "Base Game" && !Directory.Exists(new Mod(name).DataPath))
+                {
+                    // don't do zip file extraction on boot, unintuitively freezes the game for a bit
+                    name = "Base Game";
+                }
             }
             BaseGameEntries = VirtualFileSystem.Entries;
             BaseGameDefaultEntries = GameObject.Find("LauncherMainCanvas").GetComponent<LauncherMain>().Entries;
@@ -136,6 +141,7 @@ namespace TestDDLCMod
                     switch (Path.GetExtension(File).ToLower())
                     {
                         case ".bat":
+                        case ".json":
                         case ".rpy":
                         case ".sh":
                         case ".txt":
@@ -213,8 +219,13 @@ namespace TestDDLCMod
                     {
                         while (!Name.StartsWith(commonPrefix))
                         {
+                            commonPrefix = commonPrefix.TrimEnd('/');
                             commonPrefix = commonPrefix.Substring(0, commonPrefix.LastIndexOf('/') + 1);
                         }
+                    }
+                    if (commonPrefix.EndsWith("game/"))
+                    {
+                        commonPrefix = commonPrefix.Substring(0, commonPrefix.Length - "game/".Length);
                     }
                     if (commonPrefix == "")
                     {
@@ -224,8 +235,9 @@ namespace TestDDLCMod
                 var gameDirectory = archive.Entries
                     .Select(Entry => Entry.FullName.Replace("\\", "/")) // fucking path separators
                     .Where(Name => Name.StartsWith("game/") || Name.Contains("/game/")) // files in the game directory
-                    .Select(Name => Name.StartsWith("game/") ? "game/" : Name.Substring(0, Name.IndexOf("/game/") + 6)) // trim everything past game/
-                    .Aggregate(commonPrefix, (Name1, Name2) =>
+                    .Select(Name => Name.StartsWith("game/") ? "game/" : Name.Substring(0, Name.IndexOf("/game/") + "/game/".Length)) // trim everything past game/
+                    .DefaultIfEmpty(commonPrefix)
+                    .Aggregate((Name1, Name2) =>
                     {
                         var diff = Name1.Count(c => c == '/') - Name2.Count(c => c == '/');
                         if (diff < 0)
@@ -247,7 +259,7 @@ namespace TestDDLCMod
                 else
                 {
                     // want to filter only the files adjacent to or deeper than gameDirectory
-                    baseDirectory = gameDirectory.Substring(0, gameDirectory.Length - 5); // everything before the trailing game/
+                    baseDirectory = gameDirectory.Substring(0, gameDirectory.Length - "game/".Length); // everything before the trailing game/
                 }
                 foreach (var entry in archive.Entries.Where(entry => entry.FullName.Replace("\\", "/").StartsWith(baseDirectory)))
                 {
