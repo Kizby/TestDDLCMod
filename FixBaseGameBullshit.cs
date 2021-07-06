@@ -1,4 +1,5 @@
 ﻿using HarmonyLib;
+using RenpyLauncher;
 using System;
 using UnityEngine;
 
@@ -21,6 +22,17 @@ namespace TestDDLCMod
         static void Postfix()
         {
             Debug.Log(Environment.StackTrace);
+        }
+    }
+
+    // if there are more files than fit on the screen, the file buttons overlap onto the bottom bar; let's fix that
+    [HarmonyPatch(typeof(FileBrowserApp), "PerformAppStart")]
+    public static class FixFileBrowserViewportSize
+    {
+        static void Prefix(FileBrowserApp __instance)
+        {
+            var mailList = __instance.ListParentPanel.transform.Find("FileListPanel(Clone)/MailList") as RectTransform;
+            mailList.sizeDelta -= new Vector2(0, 80);
         }
     }
 }
