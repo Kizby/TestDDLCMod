@@ -164,7 +164,8 @@ namespace TestDDLCMod
                             entryNames.Add(directoryName);
                             Entries.CreateEntryAt(directoryName + "/empty");
                         }
-                    } else
+                    }
+                    else
                     {
                         AddEntry(InnerPath, Length, LastWriteTime);
                     }
@@ -187,7 +188,6 @@ namespace TestDDLCMod
 
         private void AddEntry(string innerPath, long length, System.DateTime lastWriteTime)
         {
-            Debug.Log("Creating entry at " + innerPath);
             var Entry = Entries.CreateEntryAt(innerPath);
             Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Open | FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
             FileBrowserEntries.AssetReference.AssetTypes AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.None;

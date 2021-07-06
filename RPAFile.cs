@@ -39,7 +39,6 @@ namespace TestDDLCMod
             stream.Position = indexOffset + 2; // skip 2 for the zlib header
             var indexBytes = new byte[stream.Length - stream.Position];
             stream.Read(indexBytes, 0, indexBytes.Length);
-            Debug.Log("indexBytes start with: " + indexBytes[0] + ", " + indexBytes[1] + ", " + indexBytes[2]);
 
             // *could* inflate directly into a buffer that we scale up as needed, but it's small enough it's
             // fine to just inflate it again once we know the length
@@ -229,7 +228,7 @@ namespace TestDDLCMod
             { 'L', unpickler => // LONG
                 {
                     var val = unpickler.ReadLine();
-                    
+
                     BigInteger num = BigInteger.Zero;
                     if (val != "")
                     {
@@ -704,7 +703,8 @@ namespace TestDDLCMod
             if (Type == ObjType.INT)
             {
                 return Int;
-            } else if (Type == ObjType.LONG)
+            }
+            else if (Type == ObjType.LONG)
             {
                 return (int)(uint)Long;
             }

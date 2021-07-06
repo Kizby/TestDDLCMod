@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection.Emit;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -92,7 +93,7 @@ namespace TestDDLCMod
             {
                 return Resources.Load(Path.ChangeExtension(path, null), systemTypeInstance);
             }
-            path = Path.Combine(Mod.ActiveMod.DataPath, path);
+            path = Mod.ActiveMod.DataPath + "/" + path;
             if (systemTypeInstance == typeof(TextAsset))
             {
                 return LoadLocalTextAsset(path);
@@ -110,7 +111,12 @@ namespace TestDDLCMod
 
         static UnityEngine.Object LoadLocalTextAsset(string path)
         {
-            string text = File.ReadAllText(path);
+            byte[] bytes = TryGetRPABytes(path);
+            if (bytes == null)
+            {
+                bytes = File.ReadAllBytes(path);
+            }
+            var text = Encoding.UTF8.GetString(bytes);
             if (text.Length > 40000)
             {
                 text = text.Substring(0, 20000) +
@@ -119,9 +125,14 @@ namespace TestDDLCMod
             }
             return new TextAsset(text);
         }
+
         static UnityEngine.Object LoadLocalSprite(string path)
         {
-            byte[] bytes = File.ReadAllBytes(path);
+            byte[] bytes = TryGetRPABytes(path);
+            if (bytes == null)
+            {
+                bytes = File.ReadAllBytes(path);
+            }
             var texture = new Texture2D(2, 2);
             if (!texture.LoadImage(bytes))
             {
@@ -137,17 +148,57 @@ namespace TestDDLCMod
                 case ".ogg": audioType = AudioType.OGGVORBIS; break;
                 case ".mp3": audioType = AudioType.MPEG; break;
             }
-            using (var request = UnityWebRequestMultimedia.GetAudioClip(new Uri(path).AbsoluteUri, audioType))
+            byte[] bytes = TryGetRPABytes(path);
+            FileInfo tempFile = null;
+            if (bytes != null)
             {
-                request.SendWebRequest();
-                while (!request.isDone) { }
-                if (!request.isHttpError)
+                // need to cache the bytes to disk for the nonsense below to work -.-
+                tempFile = new FileInfo(Path.GetTempFileName());
+                tempFile.Attributes |= FileAttributes.Temporary;
+                using (var stream = tempFile.OpenWrite())
                 {
-                    return DownloadHandlerAudioClip.GetContent(request);
+                    stream.Write(bytes, 0, bytes.Length);
+                }
+                path = tempFile.FullName;
+            }
+            try
+            {
+                using (var request = UnityWebRequestMultimedia.GetAudioClip(new Uri(path).AbsoluteUri, audioType))
+                {
+                    request.SendWebRequest();
+                    while (!request.isDone) { }
+                    if (!request.isHttpError)
+                    {
+                        return DownloadHandlerAudioClip.GetContent(request);
+                    }
+                }
+                Debug.LogWarning("Can't open: " + path);
+                return null;
+            }
+            finally
+            {
+                if (tempFile != null && tempFile.Exists)
+                {
+                    tempFile.Delete();
                 }
             }
-            Debug.LogWarning("Can't open: " + path);
-            return null;
+        }
+
+        private static byte[] TryGetRPABytes(string path)
+        {
+            byte[] bytes = null;
+            path = path.Substring(Mod.ActiveMod.DataPath.Length + 1);
+            for (var index = path.IndexOf(".rpa/"); index != -1; index = path.IndexOf(".rpa/", index + ".rpa/".Length))
+            {
+                var rpaPath = path.Substring(0, index + ".rpa".Length);
+                if (Mod.ActiveMod.RPAFiles.ContainsKey(rpaPath))
+                {
+                    var rpaFile = Mod.ActiveMod.RPAFiles[rpaPath];
+                    bytes = rpaFile.GetFile(path.Substring(rpaPath.Length + 1));
+                }
+            }
+
+            return bytes;
         }
     }
 }
