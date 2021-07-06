@@ -15,6 +15,7 @@ namespace TestDDLCMod
         public readonly string Name;
         public readonly FileBrowserEntries.FileBrowserEntry.Type Type;
         public FileBrowserEntries Entries { get; private set; }
+        public Dictionary<string, RPAFile> RPAFiles { get; private set; } = new Dictionary<string, RPAFile>();
 
         private const string MOD_CACHE_NAME = "currentMod.txt";
         private static FileBrowserEntries BaseGameEntries;
@@ -130,48 +131,43 @@ namespace TestDDLCMod
                 {
                     var InnerPath = Directory.Substring(DataPath.Length + 1);
                     entryNames.Add(InnerPath);
-                    Entries.CreateEntryAt(Path.Combine(InnerPath, "empty"));
+                    Entries.CreateEntryAt(InnerPath + "/empty");
                 }
                 foreach (var File in Directory.EnumerateFiles(DataPath, "*", SearchOption.AllDirectories))
                 {
-                    var InnerPath = File.Substring(DataPath.Length + 1);
-                    entryNames.Add(InnerPath);
-                    var Entry = Entries.CreateEntryAt(InnerPath);
                     var Info = new FileInfo(File);
-                    Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Open | FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
-                    FileBrowserEntries.AssetReference.AssetTypes AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.None;
-                    switch (Path.GetExtension(File).ToLower())
+                    var LastWriteTime = Info.LastWriteTime;
+                    var Length = Info.Length;
+                    var InnerPath = File.Substring(DataPath.Length + 1).Replace('\\', '/');
+                    entryNames.Add(InnerPath);
+
+                    if (InnerPath.EndsWith(".rpa"))
                     {
-                        case ".bat":
-                        case ".json":
-                        case ".rpy":
-                        case ".sh":
-                        case ".txt":
-                            Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Text;
-                            AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.TextAsset;
-                            break;
-                        case ".png":
-                        case ".jpg":
-                            Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Image;
-                            AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.Sprite;
-                            break;
-                        case ".ogg":
-                        case ".mp3":
-                            Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Audio;
-                            AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip;
-                            break;
-                        default:
-                            Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
-                            break;
+                        var rpaFile = new RPAFile(File);
+                        if (!rpaFile.Ok)
+                        {
+                            Debug.LogError("Can't open rpa archive: " + InnerPath);
+                            continue;
+                        }
+                        RPAFiles[InnerPath] = rpaFile;
+
+                        var DirectoryNames = new HashSet<string>() { InnerPath };
+                        foreach (var rpaEntry in rpaFile)
+                        {
+                            var name = InnerPath + "/" + rpaEntry.Name;
+                            DirectoryNames.Add(name.Substring(0, name.LastIndexOf('/')));
+                            entryNames.Add(name);
+                            AddEntry(name, rpaEntry.Length, LastWriteTime);
+                        }
+                        foreach (var directoryName in DirectoryNames)
+                        {
+                            entryNames.Add(directoryName);
+                            Entries.CreateEntryAt(directoryName + "/empty");
+                        }
+                    } else
+                    {
+                        AddEntry(InnerPath, Length, LastWriteTime);
                     }
-                    Entry.Modified = Info.LastWriteTime;
-                    Entry.ModifiedUTC = Entry.Modified.ToFileTimeUtc();
-                    Entry.Asset = new FileBrowserEntries.AssetReference()
-                    {
-                        Path = InnerPath,
-                        AssetSize = Info.Length,
-                        Type = AssetAssetType,
-                    };
                 }
 
                 foreach (var Entry in BaseGameDefaultEntries.Entries)
@@ -189,6 +185,46 @@ namespace TestDDLCMod
             VirtualFileSystem.Entries = Entries;
         }
 
+        private void AddEntry(string innerPath, long length, System.DateTime lastWriteTime)
+        {
+            Debug.Log("Creating entry at " + innerPath);
+            var Entry = Entries.CreateEntryAt(innerPath);
+            Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Open | FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
+            FileBrowserEntries.AssetReference.AssetTypes AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.None;
+            switch (Path.GetExtension(innerPath).ToLower())
+            {
+                case ".bat":
+                case ".json":
+                case ".rpy":
+                case ".sh":
+                case ".txt":
+                    Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Text;
+                    AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.TextAsset;
+                    break;
+                case ".png":
+                case ".jpg":
+                    Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Image;
+                    AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.Sprite;
+                    break;
+                case ".ogg":
+                case ".mp3":
+                    Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Audio;
+                    AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip;
+                    break;
+                default:
+                    Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
+                    break;
+            }
+            Entry.Modified = lastWriteTime;
+            Entry.ModifiedUTC = Entry.Modified.ToFileTimeUtc();
+            Entry.Asset = new FileBrowserEntries.AssetReference()
+            {
+                Path = innerPath,
+                AssetSize = length,
+                Type = AssetAssetType,
+            };
+        }
+
         public void Reset()
         {
             switch (Type)
@@ -198,7 +234,7 @@ namespace TestDDLCMod
                 case ModBrowserApp.ModArchiveType: break;
                 default: Debug.LogWarning("Unexpected type in Mod.Reset!"); return;
             }
-            if (!DataPath.EndsWith(Path.Combine("mods", Name)))
+            if (!DataPath.EndsWith("mods/" + Name))
             {
                 Debug.LogWarning("Trying to recursively delete \"" + DataPath + "\", wtf!?");
                 return;
