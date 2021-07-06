@@ -66,37 +66,8 @@ namespace TestDDLCMod
                 }
             }
 
-            UnpickleIndex(pickled);
-        }
-
-        void UnpickleIndex(byte[] pickled)
-        {
-            int offset = 0;
-            if (pickled[offset++] != 0x80)
-            {
-                Debug.LogError("No pickle header");
-                return;
-            }
-            int protocol = pickled[offset++];
-            if (protocol != 2)
-            {
-                Debug.LogError("Need to handle pickle protocol " + protocol + " apparently");
-                return;
-            }
-            Debug.LogError("Next byte is: " + PrettyBytes(pickled, offset, 8));
-            return;
-
-
-            if (pickled[offset++] != '.')
-            {
-                Debug.LogError("No STOP code at end of pickle");
-                return;
-            }
-            if (offset != pickled.Length)
-            {
-                Debug.LogWarning("Extra bytes at end of pickle?");
-                return;
-            }
+            var pythonObj = Unpickler.Unpickle(pickled);
+            Debug.Log("Successfully unpickled! Type is: " + pythonObj.Type);
         }
 
         bool Expect(string s)
@@ -291,8 +262,8 @@ namespace TestDDLCMod
             },
             { 'a', unpickler => // APPEND
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "APPEND");
-                    unpickler.ok = false;
+                    var val = unpickler.stack.Pop();
+                    unpickler.stack.Peek().List.Add(val);
                 }
             },
             { 'b', unpickler => // BUILD
@@ -309,20 +280,32 @@ namespace TestDDLCMod
             },
             { 'd', unpickler => // DICT
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "DICT");
-                    unpickler.ok = false;
+                    var dict = new Dictionary<PythonObj, PythonObj>();
+                    while (unpickler.stack.Peek() != unpickler.mark)
+                    {
+                        var val = unpickler.stack.Pop();
+                        var key = unpickler.stack.Pop();
+                        dict[key] = val;
+                    }
+                    unpickler.stack.Pop(); // pop the mark
+                    unpickler.stack.Push(new PythonObj(dict));
                 }
             },
             { '}', unpickler => // EMPTY_DICT
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "EMPTY_DICT");
-                    unpickler.ok = false;
+                    unpickler.stack.Push(new PythonObj(new Dictionary<PythonObj, PythonObj>()));
                 }
             },
             { 'e', unpickler => // APPENDS
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "APPENDS");
-                    unpickler.ok = false;
+                    var toAppend = new List<PythonObj>();
+                    while (unpickler.stack.Peek() != unpickler.mark)
+                    {
+                        toAppend.Add(unpickler.stack.Pop());
+                    }
+                    toAppend.Reverse(); // took them off the stack in reverse order, so fix it
+                    unpickler.stack.Pop(); // pop the mark
+                    unpickler.stack.Peek().List.AddRange(toAppend);
                 }
             },
             { 'g', unpickler => // GET
@@ -351,14 +334,19 @@ namespace TestDDLCMod
             },
             { 'l', unpickler => // LIST
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "LIST");
-                    unpickler.ok = false;
+                    var list = new List<PythonObj>();
+                    while (unpickler.stack.Peek() != unpickler.mark)
+                    {
+                        list.Add(unpickler.stack.Pop());
+                    }
+                    list.Reverse(); // took them off the stack in reverse order, so fix it
+                    unpickler.stack.Pop(); // pop the mark
+                    unpickler.stack.Push(new PythonObj(list));
                 }
             },
             { ']', unpickler => // EMPTY_LIST
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "EMPTY_LIST");
-                    unpickler.ok = false;
+                    unpickler.stack.Push(new PythonObj(new List<PythonObj>()));
                 }
             },
             { 'o', unpickler => // OBJ
@@ -387,38 +375,58 @@ namespace TestDDLCMod
             },
             { 's', unpickler => // SETITEM
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "SETITEM");
-                    unpickler.ok = false;
+                    var val = unpickler.stack.Pop();
+                    var key = unpickler.stack.Pop();
+                    unpickler.stack.Peek().Dictionary[key] = val;
                 }
             },
             { 't', unpickler => // TUPLE
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "TUPLE");
-                    unpickler.ok = false;
+                    var list = new List<PythonObj>();
+                    while (unpickler.stack.Peek() != unpickler.mark)
+                    {
+                        list.Add(unpickler.stack.Pop());
+                    }
+                    list.Reverse(); // took them off the stack in reverse order, so fix it
+                    unpickler.stack.Pop(); // pop the mark
+                    unpickler.stack.Push(new PythonObj(list, true));
                 }
             },
             { ')', unpickler => // EMPTY_TUPLE
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "EMPTY_TUPLE");
-                    unpickler.ok = false;
+                    unpickler.stack.Push(new PythonObj(new List<PythonObj>(), true));
                 }
             },
             { 'u', unpickler => // SETITEMS
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "SETITEMS");
-                    unpickler.ok = false;
+                    var toInsert = new Dictionary<PythonObj, PythonObj>();
+                    while (unpickler.stack.Peek() != unpickler.mark)
+                    {
+                        var val = unpickler.stack.Pop();
+                        var key = unpickler.stack.Pop();
+                        toInsert[key] = val;
+                    }
+                    unpickler.stack.Pop(); // pop the mark
+                    var dict = unpickler.stack.Peek().Dictionary;
+                    foreach (var entry in toInsert) {
+                        dict[entry.Key] = entry.Value;
+                    }
                 }
             },
             { 'G', unpickler => // BINFLOAT
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "BINFLOAT");
-                    unpickler.ok = false;
+                    unpickler.stack.Push(new PythonObj(BitConverter.ToDouble(unpickler.pickled, unpickler.offset)));
+                    unpickler.offset += 8;
                 }
             },
             { '\x80', unpickler => // PROTO
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "PROTO");
-                    unpickler.ok = false;
+                    var val = unpickler.pickled[unpickler.offset++];
+                    if (val != 2)
+                    {
+                        Debug.LogError("Apparently need to support pickle protocol " + val);
+                        unpickler.ok = false;
+                    }
                 }
             },
             { '\x81', unpickler => // NEWOBJ
@@ -447,32 +455,38 @@ namespace TestDDLCMod
             },
             { '\x85', unpickler => // TUPLE1
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "TUPLE1");
-                    unpickler.ok = false;
+                    var list = new List<PythonObj>();
+                    list.Add(unpickler.stack.Pop());
+                    unpickler.stack.Push(new PythonObj(list, true));
                 }
             },
             { '\x86', unpickler => // TUPLE2
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "TUPLE2");
-                    unpickler.ok = false;
+                    var list = new List<PythonObj>();
+                    list.Add(unpickler.stack.Pop());
+                    list.Add(unpickler.stack.Pop());
+                    list.Reverse();
+                    unpickler.stack.Push(new PythonObj(list, true));
                 }
             },
             { '\x87', unpickler => // TUPLE3
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "TUPLE3");
-                    unpickler.ok = false;
+                    var list = new List<PythonObj>();
+                    list.Add(unpickler.stack.Pop());
+                    list.Add(unpickler.stack.Pop());
+                    list.Add(unpickler.stack.Pop());
+                    list.Reverse();
+                    unpickler.stack.Push(new PythonObj(list, true));
                 }
             },
             { '\x88', unpickler => // NEWTRUE
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "NEWTRUE");
-                    unpickler.ok = false;
+                    unpickler.stack.Push(new PythonObj(true));
                 }
             },
             { '\x89', unpickler => // NEWFALSE
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "NEWFALSE");
-                    unpickler.ok = false;
+                    unpickler.stack.Push(new PythonObj(false));
                 }
             },
             { '\x8a', unpickler => // LONG1
@@ -487,7 +501,6 @@ namespace TestDDLCMod
                     unpickler.ok = false;
                 }
             },
-
         };
 
         public static PythonObj Unpickle(byte[] pickled)
@@ -513,7 +526,7 @@ namespace TestDDLCMod
             stop = false;
             stack = new Stack<PythonObj>();
 
-            while (!stop)
+            while (ok && !stop)
             {
                 dispatch[(char)pickled[offset++]](this);
             }
@@ -544,18 +557,27 @@ namespace TestDDLCMod
             }
             return result;
         }
+
+        private byte[] GetBytes(int count)
+        {
+            byte[] bytes = new byte[count];
+            Array.Copy(pickled, offset, bytes, 0, count);
+            offset += count;
+            return bytes;
+        }
     }
 
     class PythonObj
     {
         public ObjType Type { get; private set; }
         public bool Bool { get; private set; }
-        public float Float { get; private set; }
+        public double Float { get; private set; }
         public int Int { get; private set; }
         public long Long { get; private set; }
         public string String { get; private set; }
         public List<PythonObj> List { get; private set; }
-        public Dictionary<string, PythonObj> Dictionary { get; private set; }
+        public Dictionary<PythonObj, PythonObj> Dictionary { get; private set; }
+        public List<PythonObj> Tuple => List;
 
         public PythonObj()
         {
@@ -566,7 +588,7 @@ namespace TestDDLCMod
             Type = ObjType.BOOL;
             Bool = val;
         }
-        public PythonObj(float val)
+        public PythonObj(double val)
         {
             Type = ObjType.FLOAT;
             Float = val;
@@ -586,15 +608,67 @@ namespace TestDDLCMod
             Type = ObjType.STRING;
             String = val;
         }
-        public PythonObj(List<PythonObj> val)
+        // tuples are immutable, so are worth distinguishing
+        public PythonObj(List<PythonObj> val, bool tuple = false)
         {
-            Type = ObjType.LIST;
+            Type = tuple ? ObjType.TUPLE : ObjType.LIST;
             List = val;
         }
-        public PythonObj(Dictionary<string, PythonObj> val)
+        public PythonObj(Dictionary<PythonObj, PythonObj> val)
         {
             Type = ObjType.DICTIONARY;
             Dictionary = val;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (obj is PythonObj pobj)
+            {
+                if (Type != pobj.Type)
+                {
+                    return false;
+                }
+                switch (Type)
+                {
+                    case ObjType.BOOL: return Bool == pobj.Bool;
+                    case ObjType.FLOAT: return Float == pobj.Float;
+                    case ObjType.INT: return Int == pobj.Int;
+                    case ObjType.LONG: return Long == pobj.Long;
+                    case ObjType.STRING: return String == pobj.String;
+                    case ObjType.LIST: return List == pobj.List;
+                    case ObjType.DICTIONARY: return Dictionary == pobj.Dictionary;
+                    case ObjType.TUPLE:
+                        // tuples are immutable, so compare their contents
+                        if (List.Count != pobj.List.Count)
+                        {
+                            return false;
+                        }
+                        for (var i = 0; i < List.Count; ++i)
+                        {
+                            if (!List[i].Equals(pobj.List[i]))
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
+                }
+            }
+            return base.Equals(obj);
+        }
+
+        public override int GetHashCode()
+        {
+            int hashCode = -1631622129;
+            hashCode = hashCode * -1521134295 + Type.GetHashCode();
+            hashCode = hashCode * -1521134295 + Bool.GetHashCode();
+            hashCode = hashCode * -1521134295 + Float.GetHashCode();
+            hashCode = hashCode * -1521134295 + Int.GetHashCode();
+            hashCode = hashCode * -1521134295 + Long.GetHashCode();
+            hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(String);
+            hashCode = hashCode * -1521134295 + EqualityComparer<List<PythonObj>>.Default.GetHashCode(List);
+            hashCode = hashCode * -1521134295 + EqualityComparer<Dictionary<PythonObj, PythonObj>>.Default.GetHashCode(Dictionary);
+            hashCode = hashCode * -1521134295 + EqualityComparer<List<PythonObj>>.Default.GetHashCode(Tuple);
+            return hashCode;
         }
 
         public enum ObjType
@@ -607,6 +681,7 @@ namespace TestDDLCMod
             STRING,
             LIST,
             DICTIONARY,
+            TUPLE,
         }
     }
 }
