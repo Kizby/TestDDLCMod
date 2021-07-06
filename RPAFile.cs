@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -12,34 +13,36 @@ namespace TestDDLCMod
 {
     public class RPAFile
     {
-        private Stream stream;
-        private long indexOffset;
-        private int key;
+        private string path;
+        private Dictionary<string, FileSpec> fileSpecs = new Dictionary<string, FileSpec>();
 
-        public readonly bool Ok = false;
+        public bool Ok { get; private set; } = false;
 
-        public RPAFile(Stream stream)
+        public RPAFile(string path)
         {
-            this.stream = stream;
-            if (!Expect("RPA-3.0 ")) return;
+            this.path = path;
+            using (var stream = File.OpenRead(path))
+            {
+                if (!Expect(stream, "RPA-3.0 ")) return;
 
-            indexOffset = long.Parse(GetString(16), NumberStyles.HexNumber);
-            Debug.Log("index offset is " + indexOffset);
-            if (!Expect(" ")) return;
+                var indexOffset = long.Parse(GetString(stream, 16), NumberStyles.HexNumber);
+                if (!Expect(stream, " ")) return;
 
-            key = int.Parse(GetString(8), NumberStyles.HexNumber);
-            Debug.Log("key is " + key);
+                var key = int.Parse(GetString(stream, 8), NumberStyles.HexNumber);
 
-            ParseIndex();
+                ParseIndex(stream, indexOffset, key);
+            }
         }
 
-        void ParseIndex()
+        void ParseIndex(Stream stream, long indexOffset, int key)
         {
-            stream.Position = indexOffset + 2;
+            stream.Position = indexOffset + 2; // skip 2 for the zlib header
             var indexBytes = new byte[stream.Length - stream.Position];
             stream.Read(indexBytes, 0, indexBytes.Length);
             Debug.Log("indexBytes start with: " + indexBytes[0] + ", " + indexBytes[1] + ", " + indexBytes[2]);
 
+            // *could* inflate directly into a buffer that we scale up as needed, but it's small enough it's
+            // fine to just inflate it again once we know the length
             int decompressedLength = 0;
             using (var memStream = new MemoryStream(indexBytes))
             {
@@ -68,10 +71,25 @@ namespace TestDDLCMod
             }
 
             var pythonObj = Unpickler.Unpickle(pickled);
-            Debug.Log("Successfully unpickled! Type is: " + pythonObj.Type);
+            if (pythonObj.Type != PythonObj.ObjType.DICTIONARY)
+            {
+                Debug.LogError("Pickled index isn't a dictionary?");
+                return;
+            }
+
+            foreach (var entry in pythonObj.Dictionary)
+            {
+                var name = entry.Key.String;
+                var rawOffset = entry.Value.List[0].List[0].ToInt();
+                var rawLength = entry.Value.List[0].List[1].ToInt();
+                var offset = rawOffset ^ key;
+                var length = rawLength ^ key;
+                fileSpecs[name] = new FileSpec(name, length, offset);
+            }
+            Ok = true;
         }
 
-        bool Expect(string s)
+        private bool Expect(Stream stream, string s)
         {
             byte[] bytes = new byte[s.Length];
             stream.Read(bytes, 0, bytes.Length);
@@ -85,11 +103,27 @@ namespace TestDDLCMod
             return true;
         }
 
-        string GetString(int count)
+        private string GetString(Stream stream, int count)
         {
             byte[] bytes = new byte[count];
             stream.Read(bytes, 0, bytes.Length);
             return Encoding.UTF8.GetString(bytes);
+        }
+
+        public byte[] GetFile(string name)
+        {
+            byte[] bytes = new byte[fileSpecs[name].Length];
+            using (var stream = File.OpenRead(path))
+            {
+                stream.Position = fileSpecs[name].Offset;
+                stream.Read(bytes, 0, bytes.Length);
+            }
+            return bytes;
+        }
+
+        public IEnumerator<FileSpec> GetEnumerator()
+        {
+            return fileSpecs.Values.GetEnumerator();
         }
 
         string PrettyBytes(byte[] source, int offset, int length)
@@ -100,6 +134,20 @@ namespace TestDDLCMod
                 result.AppendFormat("{0:x2} ", source[i]);
             }
             return result.ToString();
+        }
+
+        public class FileSpec
+        {
+            public readonly string Name;
+            public readonly long Length;
+            public readonly long Offset;
+
+            public FileSpec(string name, long length, long offset)
+            {
+                Name = name;
+                Length = length;
+                Offset = offset;
+            }
         }
     }
 
@@ -528,7 +576,6 @@ namespace TestDDLCMod
 
             while (ok && !stop)
             {
-                Debug.Log("Opcode: " + (char)pickled[offset]);
                 dispatch[(char)pickled[offset++]](this);
             }
         }
@@ -569,7 +616,6 @@ namespace TestDDLCMod
                 return 0;
             }
             offset += bytes;
-            Debug.Log("Parsed an int: " + result);
             return result;
         }
 
@@ -633,6 +679,37 @@ namespace TestDDLCMod
         {
             Type = ObjType.DICTIONARY;
             Dictionary = val;
+        }
+
+        public override string ToString()
+        {
+            switch (Type)
+            {
+                case ObjType.NONE: return "<none>";
+                case ObjType.BOOL: return Bool.ToString();
+                case ObjType.FLOAT: return Float.ToString();
+                case ObjType.INT: return Int.ToString();
+                case ObjType.LONG: return Long.ToString();
+                case ObjType.STRING: return "'" + String + "'";
+                case ObjType.LIST: return "[" + string.Join(", ", List) + "]";
+                case ObjType.DICTIONARY: return "{" + string.Join(", ", Dictionary.Select(entry => entry.Key.ToString() + ": " + entry.Value.ToString())) + "}";
+                case ObjType.TUPLE: return "(" + string.Join(", ", List) + ")";
+            }
+            Debug.LogError("Invalid type in PythonObj.ToString()");
+            return "";
+        }
+
+        public int ToInt()
+        {
+            if (Type == ObjType.INT)
+            {
+                return Int;
+            } else if (Type == ObjType.LONG)
+            {
+                return (int)(uint)Long;
+            }
+            Debug.LogError("Asking for Long value of " + Type);
+            return -1;
         }
 
         public override bool Equals(object obj)
