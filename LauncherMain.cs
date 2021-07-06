@@ -21,6 +21,7 @@ namespace TestDDLCMod
             Mod.InitializeMods();
         }
 
+        // need to remove ModBrowserApp from the list of apps before serialization or else we'll break the base game
         [HarmonyPatch("SaveLauncher")]
         static void Prefix(LauncherMain __instance, out LauncherApp __state)
         {
