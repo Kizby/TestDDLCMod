@@ -178,14 +178,73 @@ namespace TestDDLCMod
             },
             { 'b', unpickler => // BUILD
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "BUILD");
-                    unpickler.ok = false;
+                    var rawState = unpickler.stack.Pop();
+                    var inst = unpickler.stack.Peek();
+                    if (inst.Type != PythonObj.ObjType.NEWOBJ)
+                    {
+                        Debug.LogError("Trying to build off a " + inst.Type + " instead of a NEWOBJ?");
+                                        unpickler.ok = false;
+                        return;
+                    }
+                    Action<PythonObj> buildFromState = null;
+                    Dictionary<string, Action<PythonObj>> stateBuilders = new Dictionary<string, Action<PythonObj>>()
+                    {
+                        {"renpy.ast.PyCode", state =>
+                            {
+                                inst.Dictionary[new PythonObj("source")] = state.Tuple[1];
+                                inst.Dictionary[new PythonObj("location")] = state.Tuple[2];
+                                inst.Dictionary[new PythonObj("mode")] = state.Tuple[3];
+                                inst.Dictionary[new PythonObj("bytecode")] = new PythonObj();
+                            }
+                        },
+                    };
+                    if (stateBuilders.ContainsKey(inst.Name))
+                    {
+                        buildFromState = stateBuilders[inst.Name];
+                    }
+                    else
+                    {
+                        Debug.Log("Here's hoping that " + inst.Name + " doesn't have a __setstate__");
+                        buildFromState = state =>
+                        {
+                            switch (state.Type)
+                            {
+                                case PythonObj.ObjType.NONE: break;
+                                case PythonObj.ObjType.TUPLE:
+                                    if (state.Tuple.Count != 2)
+                                    {
+                                        Debug.LogError("Weird tuple in unpickler (count = " + state.Tuple.Count + ")");
+                                        unpickler.ok = false;
+                                        return;
+                                    }
+                                    buildFromState(state.Tuple[0]);
+                                    buildFromState(state.Tuple[1]);
+                                    break;
+                                case PythonObj.ObjType.DICTIONARY:
+                                    foreach(var entry in state.Dictionary)
+                                    {
+                                        Debug.Log("Setting " + entry.Key + " to " + entry.Value);
+                                        inst.Dictionary[entry.Key] = entry.Value;
+                                    }
+                                    break;
+                                default:
+                                    Debug.LogError("State is a " + state.Type + "; wtf?");
+                                    unpickler.ok = false;
+                                    break;
+                            }
+                        };
+                    }
+                    Debug.Log("Building a " + inst.Name);
+                    buildFromState(rawState);
                 }
             },
             { 'c', unpickler => // GLOBAL
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "GLOBAL");
-                    unpickler.ok = false;
+                    var module = unpickler.ReadLine();
+                    var name = unpickler.ReadLine();
+                    var qualifiedName = module + "." + name;
+                    Debug.Log("Looking for global: " + qualifiedName);
+                    unpickler.stack.Push(new PythonObj(qualifiedName, true));
                 }
             },
             { 'd', unpickler => // DICT
@@ -338,8 +397,15 @@ namespace TestDDLCMod
             },
             { '\x81', unpickler => // NEWOBJ
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "NEWOBJ");
-                    unpickler.ok = false;
+                    var args = unpickler.stack.Pop();
+                    var cls = unpickler.stack.Pop();
+                    if (cls.Type != PythonObj.ObjType.CLASS)
+                    {
+                        Debug.LogError("Trying to instantiate a " + cls.Type + " instead of a CLASS");
+                        unpickler.ok = false;
+                        return;
+                    }
+                    unpickler.stack.Push(new PythonObj(cls.Name, args));
                 }
             },
             { '\x82', unpickler => // EXT1
@@ -541,6 +607,8 @@ namespace TestDDLCMod
         public List<PythonObj> List { get; private set; }
         public Dictionary<PythonObj, PythonObj> Dictionary { get; private set; }
         public List<PythonObj> Tuple => List;
+        public string Name => String;
+        public PythonObj Args { get; private set; }
 
         public PythonObj()
         {
@@ -566,9 +634,9 @@ namespace TestDDLCMod
             Type = ObjType.LONG;
             Long = val;
         }
-        public PythonObj(string val)
+        public PythonObj(string val, bool isClass = false)
         {
-            Type = ObjType.STRING;
+            Type = isClass ? ObjType.CLASS : ObjType.STRING;
             String = val;
         }
         // tuples are immutable, so are worth distinguishing
@@ -581,6 +649,14 @@ namespace TestDDLCMod
         {
             Type = ObjType.DICTIONARY;
             Dictionary = val;
+        }
+        public PythonObj(string name, PythonObj args)
+        {
+            Type = ObjType.NEWOBJ;
+            String = name;
+            Args = args;
+            // lets us set attributes later
+            Dictionary = new Dictionary<PythonObj, PythonObj>();
         }
 
         public override string ToString()
@@ -596,6 +672,8 @@ namespace TestDDLCMod
                 case ObjType.LIST: return "[" + string.Join(", ", List) + "]";
                 case ObjType.DICTIONARY: return "{" + string.Join(", ", Dictionary.Select(entry => entry.Key.ToString() + ": " + entry.Value.ToString())) + "}";
                 case ObjType.TUPLE: return "(" + string.Join(", ", List) + ")";
+                case ObjType.CLASS: return "class " + Name;
+                case ObjType.NEWOBJ: return "obj " + Name + Args + "{" + string.Join(", ", Dictionary.Select(entry => entry.Key.ToString() + ": " + entry.Value.ToString())) + "}";
             }
             Debug.LogError("Invalid type in PythonObj.ToString()");
             return "";
@@ -646,6 +724,9 @@ namespace TestDDLCMod
                             }
                         }
                         return true;
+                    case ObjType.NONE: return base.Equals(obj);
+                    case ObjType.CLASS: return Name.Equals(pobj.Name);
+                    case ObjType.NEWOBJ: return Name.Equals(pobj.Name) && Dictionary.Equals(pobj.Dictionary);
                 }
             }
             return base.Equals(obj);
@@ -653,7 +734,7 @@ namespace TestDDLCMod
 
         public override int GetHashCode()
         {
-            int hashCode = -1631622129;
+            int hashCode = -1617958758;
             hashCode = hashCode * -1521134295 + Type.GetHashCode();
             hashCode = hashCode * -1521134295 + Bool.GetHashCode();
             hashCode = hashCode * -1521134295 + Float.GetHashCode();
@@ -662,7 +743,7 @@ namespace TestDDLCMod
             hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(String);
             hashCode = hashCode * -1521134295 + EqualityComparer<List<PythonObj>>.Default.GetHashCode(List);
             hashCode = hashCode * -1521134295 + EqualityComparer<Dictionary<PythonObj, PythonObj>>.Default.GetHashCode(Dictionary);
-            hashCode = hashCode * -1521134295 + EqualityComparer<List<PythonObj>>.Default.GetHashCode(Tuple);
+            hashCode = hashCode * -1521134295 + EqualityComparer<PythonObj>.Default.GetHashCode(Args);
             return hashCode;
         }
 
@@ -677,6 +758,8 @@ namespace TestDDLCMod
             LIST,
             DICTIONARY,
             TUPLE,
+            CLASS,
+            NEWOBJ,
         }
     }
 }
