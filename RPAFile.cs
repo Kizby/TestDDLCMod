@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Numerics;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -156,7 +157,7 @@ namespace TestDDLCMod
                         unpickler.stack.Push(new PythonObj(true));
                     } else
                     {
-                        long num = long.Parse(val);
+                        var num = BigInteger.Parse(val);
                         if (num <= int.MaxValue)
                         {
                             unpickler.stack.Push(new PythonObj((int)num));
@@ -180,10 +181,11 @@ namespace TestDDLCMod
             { 'L', unpickler => // LONG
                 {
                     var val = unpickler.ReadLine();
-                    long num = 0;
+                    
+                    BigInteger num = BigInteger.Zero;
                     if (val != "")
                     {
-                        num = long.Parse(val);
+                        num = BigInteger.Parse(val);
                     }
                     unpickler.stack.Push(new PythonObj(num));
                 }
@@ -489,14 +491,14 @@ namespace TestDDLCMod
             },
             { '\x8a', unpickler => // LONG1
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "LONG1");
-                    unpickler.ok = false;
+                    var length = unpickler.ParseInt(1);
+                    unpickler.stack.Push(new PythonObj(new BigInteger(unpickler.GetBytes((int)length))));
                 }
             },
             { '\x8b', unpickler => // LONG4
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "LONG4");
-                    unpickler.ok = false;
+                    var length = unpickler.ParseInt(4);
+                    unpickler.stack.Push(new PythonObj(new BigInteger(unpickler.GetBytes((int)length))));
                 }
             },
         };
@@ -586,7 +588,7 @@ namespace TestDDLCMod
         public bool Bool { get; private set; }
         public double Float { get; private set; }
         public int Int { get; private set; }
-        public long Long { get; private set; }
+        public BigInteger Long { get; private set; }
         public string String { get; private set; }
         public List<PythonObj> List { get; private set; }
         public Dictionary<PythonObj, PythonObj> Dictionary { get; private set; }
@@ -611,7 +613,7 @@ namespace TestDDLCMod
             Type = ObjType.INT;
             Int = val;
         }
-        public PythonObj(long val)
+        public PythonObj(BigInteger val)
         {
             Type = ObjType.LONG;
             Long = val;
