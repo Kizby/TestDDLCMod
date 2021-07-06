@@ -109,10 +109,11 @@ namespace TestDDLCMod
         private bool stop;
         private Stack<PythonObj> stack;
         private PythonObj mark = new PythonObj();
+        private Dictionary<string, PythonObj> memo = new Dictionary<string, PythonObj>();
 
         public bool ok { get; private set; }
 
-        private static Dictionary<char, System.Action<Unpickler>> dispatch = new Dictionary<char, System.Action<Unpickler>>()
+        private static Dictionary<char, Action<Unpickler>> dispatch = new Dictionary<char, Action<Unpickler>>()
         {
             { '(', unpickler => // MARK
                 {
@@ -310,14 +311,14 @@ namespace TestDDLCMod
             },
             { 'g', unpickler => // GET
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "GET");
-                    unpickler.ok = false;
+                    var line = unpickler.ReadLine();
+                    unpickler.stack.Push(unpickler.memo[line]);
                 }
             },
             { 'h', unpickler => // BINGET
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "BINGET");
-                    unpickler.ok = false;
+                    var index = unpickler.ParseInt(1);
+                    unpickler.stack.Push(unpickler.memo[index.ToString()]);
                 }
             },
             { 'i', unpickler => // INST
@@ -328,8 +329,8 @@ namespace TestDDLCMod
             },
             { 'j', unpickler => // LONG_BINGET
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "LONG_BINGET");
-                    unpickler.ok = false;
+                    var index = unpickler.ParseInt(4);
+                    unpickler.stack.Push(unpickler.memo[index.ToString()]);
                 }
             },
             { 'l', unpickler => // LIST
@@ -357,20 +358,17 @@ namespace TestDDLCMod
             },
             { 'p', unpickler => // PUT
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "PUT");
-                    unpickler.ok = false;
+                    unpickler.memo[unpickler.ReadLine()] = unpickler.stack.Peek();
                 }
             },
             { 'q', unpickler => // BINPUT
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "BINPUT");
-                    unpickler.ok = false;
+                    unpickler.memo[unpickler.ParseInt(1).ToString()] = unpickler.stack.Peek();
                 }
             },
             { 'r', unpickler => // LONG_BINPUT
                 {
-                    Debug.LogError("Unhandled unpickling case: " + "LONG_BINPUT");
-                    unpickler.ok = false;
+                    unpickler.memo[unpickler.ParseInt(4).ToString()] = unpickler.stack.Peek();
                 }
             },
             { 's', unpickler => // SETITEM
@@ -528,6 +526,7 @@ namespace TestDDLCMod
 
             while (ok && !stop)
             {
+                Debug.Log("Opcode: " + (char)pickled[offset]);
                 dispatch[(char)pickled[offset++]](this);
             }
         }
@@ -544,17 +543,31 @@ namespace TestDDLCMod
 
         private long ParseInt(int bytes)
         {
-            long result = 0;
-            for (int i = 0; i < bytes; ++i)
+            long result;
+            if (bytes == 8)
             {
-                result = (result << 8) + pickled[offset++];
+                result = BitConverter.ToInt64(pickled, offset);
             }
-            long signBit = 1 << (8 * bytes - 1);
-            if (result >= signBit)
+            else if (bytes == 4)
             {
-                // sign bit means it should be negative
-                result -= signBit * 2;
+                result = BitConverter.ToInt32(pickled, offset);
             }
+            else if (bytes == 2)
+            {
+                result = BitConverter.ToInt16(pickled, offset);
+            }
+            else if (bytes == 1)
+            {
+                result = pickled[offset];
+            }
+            else
+            {
+                Debug.LogError("Unhandled byte length in ParseInt!");
+                ok = false;
+                return 0;
+            }
+            offset += bytes;
+            Debug.Log("Parsed an int: " + result);
             return result;
         }
 
