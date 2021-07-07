@@ -33,5 +33,19 @@ namespace TestDDLCMod
         {
             __instance.apps.Add(__state);
         }
+
+        // skip straight to DDLC
+        static bool HaveDokid = false;
+        [HarmonyPatch("SwitchToApp")]
+        static void Prefix(ref LauncherAppId newAppId)
+        {
+            if (!HaveDokid)
+            {
+                LauncherMain.LoadDDLCScene = true;
+                BiosApp.shownAtLeastOnce = true;
+                newAppId = LauncherAppId.DokiDoki;
+                HaveDokid = true;
+            }
+        }
     }
 }

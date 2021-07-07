@@ -9,9 +9,10 @@ using UnityEngine.UI;
 
 namespace TestDDLCMod
 {
-    [HarmonyPatch(typeof(DesktopApp), "Start")]
-    public static class PatchDesktopAppStart
+    [HarmonyPatch(typeof(DesktopApp))]
+    public static class PatchDesktopApp
     {
+        [HarmonyPatch("Start")]
         static void Prefix(DesktopApp __instance)
         {
             var StartMenuContainer = __instance.DesktopDesktop.transform.Find("StartMenuContainer") as RectTransform;

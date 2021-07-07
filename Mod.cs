@@ -168,7 +168,7 @@ namespace TestDDLCMod
                             Entries.CreateEntryAt(directoryName + "/empty");
                         }
 
-                        foreach(var rpycFile in rpaFile.RPYCFiles.Values)
+                        foreach (var rpycFile in rpaFile.RPYCFiles.Values)
                         {
                             foreach (var entry in rpycFile.Labels)
                             {
