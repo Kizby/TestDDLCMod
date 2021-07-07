@@ -158,12 +158,6 @@ namespace TestDDLCMod
                             DirectoryNames.Add(name.Substring(0, name.LastIndexOf('/')));
                             entryNames.Add(name);
                             AddEntry(name, rpaEntry.Length, LastWriteTime);
-
-                            if (rpaEntry.Name.EndsWith(".rpyc"))
-                            {
-                                // try parsing it now because why not.
-                                var rpycFile = new RPYCFile(rpaFile.GetFile(rpaEntry.Name));
-                            }
                         }
                         foreach (var directoryName in DirectoryNames)
                         {

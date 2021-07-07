@@ -668,7 +668,7 @@ namespace TestDDLCMod
         private Dictionary<string, PythonObj> _Fields;
         public Dictionary<string, PythonObj> Fields
         {
-            get => Type == ObjType.NEWOBJ ? _Fields: throw new MemberAccessException("Asked for Fields of a " + Type);
+            get => Type == ObjType.NEWOBJ ? _Fields : throw new MemberAccessException("Asked for Fields of a " + Type);
             private set => _Fields = value;
         }
         public List<PythonObj> Tuple => Type == ObjType.TUPLE ? _List : throw new MemberAccessException("Asked for Tuple of a " + Type);

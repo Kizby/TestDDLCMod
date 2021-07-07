@@ -12,6 +12,7 @@ namespace TestDDLCMod
         private Dictionary<string, FileSpec> fileSpecs = new Dictionary<string, FileSpec>();
 
         public bool Ok { get; private set; } = false;
+        public Dictionary<string, RPYCFile> RPYCFiles { get; private set; } = new Dictionary<string, RPYCFile>();
 
         public RPAFile(string path)
         {
@@ -44,6 +45,10 @@ namespace TestDDLCMod
                     var offset = rawOffset ^ key;
                     var length = rawLength ^ key;
                     fileSpecs[name] = new FileSpec(name, length, offset);
+                    if (name.EndsWith(".rpyc"))
+                    {
+                        RPYCFiles[name] = new RPYCFile(GetFile(name));
+                    }
                 }
                 Ok = true;
             }
