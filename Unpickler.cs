@@ -197,8 +197,8 @@ namespace TestDDLCMod
                     }
                     Action<PythonObj, PythonObj> setField = (key, value) =>
                     {
-                        seenClass(inst.Name).Add(key.ToString());
-                        inst.Dictionary[key] = value;
+                        seenClass(inst.Name).Add(key.String);
+                        inst.Fields[key.String] = value;
                     };
                     Action<PythonObj> buildFromState = null;
                     Dictionary<string, Action<PythonObj>> stateBuilders = new Dictionary<string, Action<PythonObj>>()
@@ -614,7 +614,7 @@ namespace TestDDLCMod
             return bytes;
         }
     }
-    class PythonObj
+    public class PythonObj
     {
         public ObjType Type { get; private set; }
         private bool _Bool;
@@ -656,17 +656,23 @@ namespace TestDDLCMod
         private Dictionary<PythonObj, PythonObj> _Dictionary;
         public Dictionary<PythonObj, PythonObj> Dictionary
         {
-            get => Type == ObjType.DICTIONARY || Type == ObjType.NEWOBJ ? _Dictionary : throw new MemberAccessException("Asked for Dictionary of a " + Type);
+            get => Type == ObjType.DICTIONARY ? _Dictionary : throw new MemberAccessException("Asked for Dictionary of a " + Type);
             private set => _Dictionary = value;
         }
-        public List<PythonObj> Tuple => Type == ObjType.TUPLE ? _List : throw new MemberAccessException("Asked for Tuple of a " + Type);
-        public string Name => Type == ObjType.NEWOBJ || Type == ObjType.CLASS ? _String : throw new MemberAccessException("Asked for Name of a " + Type);
         private PythonObj _Args;
         public PythonObj Args
         {
             get => Type == ObjType.NEWOBJ ? _Args : throw new MemberAccessException("Asked for Args of a " + Type);
             private set => _Args = value;
         }
+        private Dictionary<string, PythonObj> _Fields;
+        public Dictionary<string, PythonObj> Fields
+        {
+            get => Type == ObjType.NEWOBJ ? _Fields: throw new MemberAccessException("Asked for Fields of a " + Type);
+            private set => _Fields = value;
+        }
+        public List<PythonObj> Tuple => Type == ObjType.TUPLE ? _List : throw new MemberAccessException("Asked for Tuple of a " + Type);
+        public string Name => Type == ObjType.NEWOBJ || Type == ObjType.CLASS ? _String : throw new MemberAccessException("Asked for Name of a " + Type);
 
         public PythonObj()
         {
@@ -714,7 +720,7 @@ namespace TestDDLCMod
             String = name;
             Args = args;
             // lets us set attributes later
-            Dictionary = new Dictionary<PythonObj, PythonObj>();
+            Fields = new Dictionary<string, PythonObj>();
         }
 
         public override string ToString()
@@ -764,9 +770,9 @@ namespace TestDDLCMod
                 case ObjType.NEWOBJ:
                     {
                         var result = "obj " + Name + Args.ToString(nextIndent) + "{\n";
-                        foreach (var item in Dictionary)
+                        foreach (var item in Fields)
                         {
-                            result += nextIndent + item.Key.ToString(nextIndent) + ": ";
+                            result += nextIndent + item.Key.Replace("\n", "\n" + nextIndent) + ": ";
                             result += item.Value.ToString(nextIndent) + "\n";
                         }
                         return result + indent + "}";
@@ -823,7 +829,7 @@ namespace TestDDLCMod
                         return true;
                     case ObjType.NONE: return base.Equals(obj);
                     case ObjType.CLASS: return Name.Equals(pobj.Name);
-                    case ObjType.NEWOBJ: return Name.Equals(pobj.Name) && Dictionary.Equals(pobj.Dictionary);
+                    case ObjType.NEWOBJ: return Name.Equals(pobj.Name) && Fields.Equals(pobj.Fields);
                 }
             }
             return base.Equals(obj);
@@ -841,6 +847,7 @@ namespace TestDDLCMod
             hashCode = hashCode * -1521134295 + EqualityComparer<List<PythonObj>>.Default.GetHashCode(_List);
             hashCode = hashCode * -1521134295 + EqualityComparer<Dictionary<PythonObj, PythonObj>>.Default.GetHashCode(_Dictionary);
             hashCode = hashCode * -1521134295 + EqualityComparer<PythonObj>.Default.GetHashCode(_Args);
+            hashCode = hashCode * -1521134295 + EqualityComparer<Dictionary<string, PythonObj>>.Default.GetHashCode(_Fields);
             return hashCode;
         }
 
