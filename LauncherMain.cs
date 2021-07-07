@@ -4,7 +4,7 @@ using RenpyLauncher;
 namespace TestDDLCMod
 {
     [HarmonyPatch(typeof(LauncherMain))]
-    public static class PatchLauncherMainStart
+    public static class PatchLauncherMain
     {
         [HarmonyPatch("Start")]
         static void Prefix(LauncherMain __instance)

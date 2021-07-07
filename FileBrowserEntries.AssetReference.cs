@@ -4,7 +4,7 @@ using System;
 namespace TestDDLCMod
 {
     [HarmonyPatch(typeof(FileBrowserEntries.AssetReference))]
-    public static class PatchFileBrowserEntriesAssetReference
+    public static class PatchFileBrowserEntries_AssetReference
     {
         [HarmonyPatch("GetTypeFromAssetType")]
         static void Postfix(FileBrowserEntries.AssetReference.AssetTypes type, ref Type __result)

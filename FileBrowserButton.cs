@@ -5,9 +5,10 @@ using UnityEngine.UI;
 namespace TestDDLCMod
 {
 
-    [HarmonyPatch(typeof(FileBrowserButton), "SetFileType")]
-    public static class PatchFileBrowserButtonSetFileType
+    [HarmonyPatch(typeof(FileBrowserButton))]
+    public static class PatchFileBrowserButton
     {
+        [HarmonyPatch("SetFileType")]
         static void Postfix(FileBrowserButton __instance, FileBrowserEntries.FileBrowserEntry.Type type)
         {
             switch (type)
