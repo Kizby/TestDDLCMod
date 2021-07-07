@@ -16,6 +16,9 @@ namespace TestDDLCMod
         public readonly FileBrowserEntries.FileBrowserEntry.Type Type;
         public FileBrowserEntries Entries { get; private set; }
         public Dictionary<string, RPAFile> RPAFiles { get; private set; } = new Dictionary<string, RPAFile>();
+        public Dictionary<string, PythonObj> Labels = new Dictionary<string, PythonObj>();
+        public List<PythonObj> EarlyPython = new List<PythonObj>();
+        public SortedDictionary<int, List<PythonObj>> Inits = new SortedDictionary<int, List<PythonObj>>();
 
         private const string MOD_CACHE_NAME = "currentMod.txt";
         private static FileBrowserEntries BaseGameEntries;
@@ -163,6 +166,33 @@ namespace TestDDLCMod
                         {
                             entryNames.Add(directoryName);
                             Entries.CreateEntryAt(directoryName + "/empty");
+                        }
+
+                        foreach(var rpycFile in rpaFile.RPYCFiles.Values)
+                        {
+                            foreach (var entry in rpycFile.Labels)
+                            {
+                                if (Labels.ContainsKey(entry.Key))
+                                {
+                                    Debug.LogWarning("Duplicate label definition for " + entry.Key);
+                                }
+                                else
+                                {
+                                    Labels[entry.Key] = entry.Value;
+                                }
+                            }
+                            foreach (var entry in rpycFile.Inits)
+                            {
+                                if (!Inits.ContainsKey(entry.Key))
+                                {
+                                    Inits[entry.Key] = new List<PythonObj>();
+                                }
+                                Inits[entry.Key].AddRange(entry.Value);
+                            }
+                            foreach (var earlyPython in rpycFile.EarlyPython)
+                            {
+                                EarlyPython.Add(earlyPython);
+                            }
                         }
                     }
                     else
