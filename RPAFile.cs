@@ -39,8 +39,8 @@ namespace TestDDLCMod
                 foreach (var entry in pythonObj.Dictionary)
                 {
                     var name = entry.Key.String;
-                    var rawOffset = entry.Value.List[0].List[0].ToInt();
-                    var rawLength = entry.Value.List[0].List[1].ToInt();
+                    var rawOffset = entry.Value.List[0].Tuple[0].ToInt();
+                    var rawLength = entry.Value.List[0].Tuple[1].ToInt();
                     var offset = rawOffset ^ key;
                     var length = rawLength ^ key;
                     fileSpecs[name] = new FileSpec(name, length, offset);

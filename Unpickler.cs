@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -20,6 +19,16 @@ namespace TestDDLCMod
         private Dictionary<string, PythonObj> memo = new Dictionary<string, PythonObj>();
 
         public bool ok { get; private set; }
+
+        private static Dictionary<string, HashSet<string>> seenFields = new Dictionary<string, HashSet<string>>();
+        private static HashSet<string> seenClass(string cls)
+        {
+            if (!seenFields.ContainsKey(cls))
+            {
+                seenFields.Add(cls, new HashSet<string>());
+            }
+            return seenFields[cls];
+        }
 
         private static Dictionary<char, Action<Unpickler>> dispatch = new Dictionary<char, Action<Unpickler>>()
         {
@@ -183,18 +192,23 @@ namespace TestDDLCMod
                     if (inst.Type != PythonObj.ObjType.NEWOBJ)
                     {
                         Debug.LogError("Trying to build off a " + inst.Type + " instead of a NEWOBJ?");
-                                        unpickler.ok = false;
+                        unpickler.ok = false;
                         return;
                     }
+                    Action<PythonObj, PythonObj> setField = (key, value) =>
+                    {
+                        seenClass(inst.Name).Add(key.ToString());
+                        inst.Dictionary[key] = value;
+                    };
                     Action<PythonObj> buildFromState = null;
                     Dictionary<string, Action<PythonObj>> stateBuilders = new Dictionary<string, Action<PythonObj>>()
                     {
                         {"renpy.ast.PyCode", state =>
                             {
-                                inst.Dictionary[new PythonObj("source")] = state.Tuple[1];
-                                inst.Dictionary[new PythonObj("location")] = state.Tuple[2];
-                                inst.Dictionary[new PythonObj("mode")] = state.Tuple[3];
-                                inst.Dictionary[new PythonObj("bytecode")] = new PythonObj();
+                                setField(new PythonObj("source"), state.Tuple[1]);
+                                setField(new PythonObj("location"), state.Tuple[2]);
+                                setField(new PythonObj("mode"), state.Tuple[3]);
+                                setField(new PythonObj("bytecode"), new PythonObj());
                             }
                         },
                     };
@@ -204,7 +218,6 @@ namespace TestDDLCMod
                     }
                     else
                     {
-                        Debug.Log("Here's hoping that " + inst.Name + " doesn't have a __setstate__");
                         buildFromState = state =>
                         {
                             switch (state.Type)
@@ -223,8 +236,7 @@ namespace TestDDLCMod
                                 case PythonObj.ObjType.DICTIONARY:
                                     foreach(var entry in state.Dictionary)
                                     {
-                                        Debug.Log("Setting " + entry.Key + " to " + entry.Value);
-                                        inst.Dictionary[entry.Key] = entry.Value;
+                                        setField(entry.Key, entry.Value);
                                     }
                                     break;
                                 default:
@@ -234,7 +246,6 @@ namespace TestDDLCMod
                             }
                         };
                     }
-                    Debug.Log("Building a " + inst.Name);
                     buildFromState(rawState);
                 }
             },
@@ -243,7 +254,6 @@ namespace TestDDLCMod
                     var module = unpickler.ReadLine();
                     var name = unpickler.ReadLine();
                     var qualifiedName = module + "." + name;
-                    Debug.Log("Looking for global: " + qualifiedName);
                     unpickler.stack.Push(new PythonObj(qualifiedName, true));
                 }
             },
@@ -535,6 +545,14 @@ namespace TestDDLCMod
             return Unpickle(pickled);
         }
 
+        public static void DumpSeenFields()
+        {
+            foreach (var entry in seenFields)
+            {
+                Debug.Log(entry.Key + ": " + string.Join(", ", entry.Value));
+            }
+        }
+
         private Unpickler(byte[] pickled)
         {
             this.pickled = pickled;
@@ -599,16 +617,56 @@ namespace TestDDLCMod
     class PythonObj
     {
         public ObjType Type { get; private set; }
-        public bool Bool { get; private set; }
-        public double Float { get; private set; }
-        public int Int { get; private set; }
-        public BigInteger Long { get; private set; }
-        public string String { get; private set; }
-        public List<PythonObj> List { get; private set; }
-        public Dictionary<PythonObj, PythonObj> Dictionary { get; private set; }
-        public List<PythonObj> Tuple => List;
-        public string Name => String;
-        public PythonObj Args { get; private set; }
+        private bool _Bool;
+        public bool Bool
+        {
+            get => Type == ObjType.BOOL ? _Bool : throw new MemberAccessException("Asked for Bool of a " + Type);
+            private set => _Bool = value;
+        }
+        private double _Float;
+        public double Float
+        {
+            get => Type == ObjType.FLOAT ? _Float : throw new MemberAccessException("Asked for Float of a " + Type);
+            private set => _Float = value;
+        }
+        private int _Int;
+        public int Int
+        {
+            get => Type == ObjType.INT ? _Int : throw new MemberAccessException("Asked for Int of a " + Type);
+            private set => _Int = value;
+        }
+        private BigInteger _Long;
+        public BigInteger Long
+        {
+            get => Type == ObjType.LONG ? _Long : throw new MemberAccessException("Asked for Long of a " + Type);
+            private set => _Long = value;
+        }
+        private string _String;
+        public string String
+        {
+            get => Type == ObjType.STRING ? _String : throw new MemberAccessException("Asked for String of a " + Type);
+            private set => _String = value;
+        }
+        private List<PythonObj> _List;
+        public List<PythonObj> List
+        {
+            get => Type == ObjType.LIST ? _List : throw new MemberAccessException("Asked for List of a " + Type);
+            private set => _List = value;
+        }
+        private Dictionary<PythonObj, PythonObj> _Dictionary;
+        public Dictionary<PythonObj, PythonObj> Dictionary
+        {
+            get => Type == ObjType.DICTIONARY || Type == ObjType.NEWOBJ ? _Dictionary : throw new MemberAccessException("Asked for Dictionary of a " + Type);
+            private set => _Dictionary = value;
+        }
+        public List<PythonObj> Tuple => Type == ObjType.TUPLE ? _List : throw new MemberAccessException("Asked for Tuple of a " + Type);
+        public string Name => Type == ObjType.NEWOBJ || Type == ObjType.CLASS ? _String : throw new MemberAccessException("Asked for Name of a " + Type);
+        private PythonObj _Args;
+        public PythonObj Args
+        {
+            get => Type == ObjType.NEWOBJ ? _Args : throw new MemberAccessException("Asked for Args of a " + Type);
+            private set => _Args = value;
+        }
 
         public PythonObj()
         {
@@ -661,6 +719,11 @@ namespace TestDDLCMod
 
         public override string ToString()
         {
+            return ToString("");
+        }
+        private string ToString(string indent)
+        {
+            var nextIndent = indent + " ";
             switch (Type)
             {
                 case ObjType.NONE: return "<none>";
@@ -668,12 +731,46 @@ namespace TestDDLCMod
                 case ObjType.FLOAT: return Float.ToString();
                 case ObjType.INT: return Int.ToString();
                 case ObjType.LONG: return Long.ToString();
-                case ObjType.STRING: return "'" + String + "'";
-                case ObjType.LIST: return "[" + string.Join(", ", List) + "]";
-                case ObjType.DICTIONARY: return "{" + string.Join(", ", Dictionary.Select(entry => entry.Key.ToString() + ": " + entry.Value.ToString())) + "}";
-                case ObjType.TUPLE: return "(" + string.Join(", ", List) + ")";
+                case ObjType.STRING: return "'" + String.Replace("\n", "\n" + nextIndent) + "'";
+                case ObjType.LIST:
+                    {
+                        var result = "[\n";
+                        foreach (var item in List)
+                        {
+                            result += nextIndent + item.ToString(nextIndent) + "\n";
+                        }
+                        return result + indent + "]";
+                    }
+                case ObjType.DICTIONARY:
+                    {
+                        var result = "{\n";
+                        foreach (var item in Dictionary)
+                        {
+                            result += nextIndent + item.Key.ToString(nextIndent) + ": ";
+                            result += item.Value.ToString(nextIndent) + "\n";
+                        }
+                        return result + indent + "}";
+                    }
+                case ObjType.TUPLE:
+                    {
+                        var result = "(\n";
+                        foreach (var item in Tuple)
+                        {
+                            result += nextIndent + item.ToString(nextIndent) + "\n";
+                        }
+                        return result + indent + ")";
+                    }
                 case ObjType.CLASS: return "class " + Name;
-                case ObjType.NEWOBJ: return "obj " + Name + Args + "{" + string.Join(", ", Dictionary.Select(entry => entry.Key.ToString() + ": " + entry.Value.ToString())) + "}";
+                case ObjType.NEWOBJ:
+                    {
+                        var result = "obj " + Name + Args.ToString(nextIndent) + "{\n";
+                        foreach (var item in Dictionary)
+                        {
+                            result += nextIndent + item.Key.ToString(nextIndent) + ": ";
+                            result += item.Value.ToString(nextIndent) + "\n";
+                        }
+                        return result + indent + "}";
+                    }
             }
             Debug.LogError("Invalid type in PythonObj.ToString()");
             return "";
@@ -736,14 +833,14 @@ namespace TestDDLCMod
         {
             int hashCode = -1617958758;
             hashCode = hashCode * -1521134295 + Type.GetHashCode();
-            hashCode = hashCode * -1521134295 + Bool.GetHashCode();
-            hashCode = hashCode * -1521134295 + Float.GetHashCode();
-            hashCode = hashCode * -1521134295 + Int.GetHashCode();
-            hashCode = hashCode * -1521134295 + Long.GetHashCode();
-            hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(String);
-            hashCode = hashCode * -1521134295 + EqualityComparer<List<PythonObj>>.Default.GetHashCode(List);
-            hashCode = hashCode * -1521134295 + EqualityComparer<Dictionary<PythonObj, PythonObj>>.Default.GetHashCode(Dictionary);
-            hashCode = hashCode * -1521134295 + EqualityComparer<PythonObj>.Default.GetHashCode(Args);
+            hashCode = hashCode * -1521134295 + _Bool.GetHashCode();
+            hashCode = hashCode * -1521134295 + _Float.GetHashCode();
+            hashCode = hashCode * -1521134295 + _Int.GetHashCode();
+            hashCode = hashCode * -1521134295 + _Long.GetHashCode();
+            hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(_String);
+            hashCode = hashCode * -1521134295 + EqualityComparer<List<PythonObj>>.Default.GetHashCode(_List);
+            hashCode = hashCode * -1521134295 + EqualityComparer<Dictionary<PythonObj, PythonObj>>.Default.GetHashCode(_Dictionary);
+            hashCode = hashCode * -1521134295 + EqualityComparer<PythonObj>.Default.GetHashCode(_Args);
             return hashCode;
         }
 
