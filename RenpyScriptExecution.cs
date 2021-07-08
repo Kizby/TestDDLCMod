@@ -22,11 +22,24 @@ namespace TestDDLCMod
         }
 
         private static int depth = "[Info   : Unity Log] ".Length;
+        private static int lineNumber = 0;
+        private static Stack<int> lineStack = new Stack<int>();
+        private static void AddDepth()
+        {
+            ++depth;
+            lineStack.Push(lineNumber);
+            lineNumber = 0;
+        }
+        private static void SubDepth()
+        {
+            --depth;
+            lineNumber = lineStack.Pop();
+        }
         private static void Log(string s)
         {
-            Debug.Log(new string(' ', depth - "[Info   : Unity Log] ".Length) + s);
+            Debug.Log(new string(' ', depth - "[Info   : Unity Log] ".Length) + lineNumber + ": " + s);
         }
-        private static string Indent(string s) => s.Replace("\n", "\n" + new string(' ', depth + 1));
+        private static string Indent(string s) => s.Replace("\n", "\n" + new string(' ', depth + 1 + (lineNumber + ": ").Length));
 
         static HashSet<Type> seenTypes = new HashSet<Type>();
         static void MaybeModContext(RenpyScriptExecution instance, RenpyExecutionContext context)
@@ -50,13 +63,13 @@ namespace TestDDLCMod
 
                     //Debug.Log("BLOCK " + block.Label + ":");
                     Log(Key + ":");
-                    ++depth;
+                    AddDepth();
                     foreach (var line in block.Contents)
                     {
                         switch (line)
                         {
                             case RenpyLoadImage renpyLoadImage:
-                                Log("LoadImage(" + renpyLoadImage.key + "): " + renpyLoadImage.fullImageDetails);
+                                Log("\"images/" + renpyLoadImage.fullImageDetails + "\"");
                                 break;
                             case RenpyGoTo renpyGoTo:
                                 var gotoDump = renpyGoTo.IsCall ? "call " : "jump ";
@@ -80,19 +93,27 @@ namespace TestDDLCMod
                                 }
                                 Log(renpySize.SizeData);
                                 break;
+                            case RenpyPause renpyPause:
+                                Log(renpyPause.PauseData);
+                                break;
                             case RenpyEasedTransform renpyEasedTransform:
+                                Log(renpyEasedTransform.TransformCommand);
+                                break;
+                            case RenpyGoToLineUnless renpyGoToLineUnless:
+                                Log("goto " + renpyGoToLineUnless.TargetLine + " unless " + renpyGoToLineUnless.ConditionText);
+                                break;
+                            case RenpyNOP renpyNOP:
+                                Log("");
+                                break;
                             case RenpyForkGoToLine renpyForkGoToLine:
                             case RenpyFunction renpyFunction:
                             case RenpyGoToLine renpyGoToLine:
-                            case RenpyGoToLineUnless renpyGoToLineUnless:
                             case RenpyHide renpyHide:
                             case RenpyImmediateTransform renpyImmediateTransform:
                             case RenpyInlinePython renpyInlinePython:
                             case RenpyLabelEntryPoint renpyLabelEntryPoint:
                             case RenpyMenuInput renpyMenuInput:
-                            case RenpyNOP renpyNOP:
                             case RenpyOneLinePython renpyOneLinePython:
-                            case RenpyPause renpyPause:
                             case RenpyPlay renpyPlay:
                             case RenpyQueue renpyQueue:
                             case RenpyReturn renpyReturn:
@@ -128,8 +149,10 @@ namespace TestDDLCMod
                                 }
                                 break;
                         }
+                        ++lineNumber;
                     }
-                    --depth;
+                    SubDepth();
+                    ++lineNumber;
                 }
                 //rawBlocks.Add(labelEntry.Key, BuildBlock(labelEntry.Key, labelEntry.Value));
             }
