@@ -4,7 +4,7 @@ using RenPyParser;
 using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using RenPyParser.VGPrompter.Script.Internal;
-using System;
+using SimpleExpressionEngine;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
@@ -35,13 +35,19 @@ namespace TestDDLCMod
             --depth;
             lineNumber = lineStack.Pop();
         }
+        private static bool markEntry = false;
         private static void Log(string s)
         {
-            Debug.Log(new string(' ', depth - "[Info   : Unity Log] ".Length) + lineNumber + ": " + s);
+            var prefix = new string(' ', depth - "[Info   : Unity Log] ".Length);
+            if (markEntry)
+            {
+                prefix = prefix.Substring(0, prefix.Length - 1) + ">";
+                markEntry = false;
+            }
+            Debug.Log(prefix + lineNumber + ": " + s);
         }
         private static string Indent(string s) => s.Replace("\n", "\n" + new string(' ', depth + 1 + (lineNumber + ": ").Length));
 
-        static HashSet<Type> seenTypes = new HashSet<Type>();
         static void MaybeModContext(RenpyScriptExecution instance, RenpyExecutionContext context)
         {
             if (!Mod.IsModded())
@@ -51,6 +57,7 @@ namespace TestDDLCMod
             var script = context.script;
             var blocks = script.Blocks;
             var rawBlocks = typeof(Blocks).GetField("blocks", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(blocks) as Dictionary<string, RenpyBlock>;
+            var rawBlockEntryPoints = typeof(Blocks).GetField("blockEntryPoints", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(blocks) as Dictionary<string, BlockEntryPoint>;
             var keys = new string[rawBlocks.Count];
             rawBlocks.Keys.CopyTo(keys, 0);
             foreach (var Key in keys)
@@ -59,13 +66,18 @@ namespace TestDDLCMod
                 {
                     //Debug.Log("Removing label " + Key);
                     RenpyBlock block = rawBlocks[Key];
-                    rawBlocks.Remove(Key);
+                    BlockEntryPoint entryPoint = rawBlockEntryPoints[Key];
+                    //rawBlocks.Remove(Key);
 
                     //Debug.Log("BLOCK " + block.Label + ":");
                     Log(Key + ":");
                     AddDepth();
                     foreach (var line in block.Contents)
                     {
+                        if (lineNumber == entryPoint.startOffset)
+                        {
+                            markEntry = true;
+                        }
                         switch (line)
                         {
                             case RenpyLoadImage renpyLoadImage:
@@ -76,7 +88,8 @@ namespace TestDDLCMod
                                 if (renpyGoTo.TargetLabel != "")
                                 {
                                     gotoDump += renpyGoTo.TargetLabel;
-                                } else
+                                }
+                                else
                                 {
                                     gotoDump += renpyGoTo.targetExpression.ToString();
                                 }
@@ -103,7 +116,7 @@ namespace TestDDLCMod
                                 Log("goto " + renpyGoToLineUnless.TargetLine + " unless " + renpyGoToLineUnless.ConditionText);
                                 break;
                             case RenpyNOP renpyNOP:
-                                Log("");
+                                Log("pass");
                                 break;
                             case RenpyImmediateTransform renpyImmediateTransform:
                                 Log(renpyImmediateTransform.TransformCommand);
@@ -123,52 +136,25 @@ namespace TestDDLCMod
                                 break;
                             case RenpyStandardProxyLib.Expression expression:
                                 Log("expr" + (expression.WaitInteraction ? " (wait)" : "") + ":");
+                                LogExpression(expression.Expr);
+                                break;
+                            case RenpyLabelEntryPoint renpyLabelEntryPoint:
+                                Log("nested: " + renpyLabelEntryPoint.NestedLabelData);
+                                Log("rootLabel: " + renpyLabelEntryPoint.entryPoint.rootLabel);
+                                Log("label: " + renpyLabelEntryPoint.entryPoint.label);
+                                Log("startIndex: " + renpyLabelEntryPoint.entryPoint.startIndex);
+                                Log("parameters:");
                                 AddDepth();
-                                foreach(var instruction in expression.Expr.instructions)
+                                foreach (var parameter in renpyLabelEntryPoint.entryPoint.callParameters)
                                 {
-                                    switch (instruction.type)
+                                    if (parameter.expression == null)
                                     {
-                                        case SimpleExpressionEngine.InstructionType.LoadFloat:
-                                            Log(instruction.type.ToString() + " " + expression.Expr.constantFloats[instruction.argumentIndex].ToString());
-                                            break;
-                                        case SimpleExpressionEngine.InstructionType.LoadVariable:
-                                        case SimpleExpressionEngine.InstructionType.FunctionCall:
-                                        case SimpleExpressionEngine.InstructionType.LoadString:
-                                        case SimpleExpressionEngine.InstructionType.LoadAttribute:
-                                        case SimpleExpressionEngine.InstructionType.MethodCall:
-                                        case SimpleExpressionEngine.InstructionType.SetVariable:
-                                        case SimpleExpressionEngine.InstructionType.SetAttribute:
-                                            Log(instruction.type.ToString() + " " + expression.Expr.constantStrings[instruction.argumentIndex]);
-                                            break;
-                                        case SimpleExpressionEngine.InstructionType.LoadObject:
-                                            Log(instruction.type.ToString() + " " + expression.Expr.constantObjects[instruction.argumentIndex].ToString());
-                                            break;
-                                        case SimpleExpressionEngine.InstructionType.ArrayDefinition:
-                                            Log(instruction.type.ToString() + " " + instruction.argumentIndex);
-                                            break;
-                                        case SimpleExpressionEngine.InstructionType.Negate:
-                                        case SimpleExpressionEngine.InstructionType.Add:
-                                        case SimpleExpressionEngine.InstructionType.Substract:
-                                        case SimpleExpressionEngine.InstructionType.Multiply:
-                                        case SimpleExpressionEngine.InstructionType.Divide:
-                                        case SimpleExpressionEngine.InstructionType.Equal:
-                                        case SimpleExpressionEngine.InstructionType.NotEqual:
-                                        case SimpleExpressionEngine.InstructionType.Greater:
-                                        case SimpleExpressionEngine.InstructionType.GreaterEqual:
-                                        case SimpleExpressionEngine.InstructionType.Less:
-                                        case SimpleExpressionEngine.InstructionType.LessEqual:
-                                        case SimpleExpressionEngine.InstructionType.Not:
-                                        case SimpleExpressionEngine.InstructionType.And:
-                                        case SimpleExpressionEngine.InstructionType.Or:
-                                        case SimpleExpressionEngine.InstructionType.ArrayIndex:
-                                        case SimpleExpressionEngine.InstructionType.ArrayIndexAssign:
-                                        case SimpleExpressionEngine.InstructionType.IfElse:
-                                        case SimpleExpressionEngine.InstructionType.LoadNone:
-                                            Log(instruction.type.ToString());
-                                            break;
-                                        case SimpleExpressionEngine.InstructionType.Unknown:
-                                            Log("Unknown instruction?");
-                                            break;
+                                        Log(parameter.name);
+                                    }
+                                    else
+                                    {
+                                        Log(parameter.name + ":");
+                                        LogExpression(parameter.expression);
                                     }
                                     ++lineNumber;
                                 }
@@ -177,7 +163,6 @@ namespace TestDDLCMod
                             case RenpyFunction renpyFunction:
                             case RenpyHide renpyHide:
                             case RenpyInlinePython renpyInlinePython:
-                            case RenpyLabelEntryPoint renpyLabelEntryPoint:
                             case RenpyMenuInput renpyMenuInput:
                             case RenpyOneLinePython renpyOneLinePython:
                             case RenpyPlay renpyPlay:
@@ -193,22 +178,16 @@ namespace TestDDLCMod
                             case RenpyStandardProxyLib.Text text:
                             case RenpyStandardProxyLib.WindowAuto windowAuto:
                             case RenpyStandardProxyLib.WaitForScreen waitForScreen:
-                                if (!seenTypes.Add(line.GetType()))
-                                {
-                                    Debug.Log("Need to handle " + line.GetType());
-                                }
+                                Log("Need to handle " + line.GetType());
                                 break;
                             default:
                                 switch (line.GetType().ToString())
                                 {
                                     case "RenpyParser.RenpyDialogueLine":
-                                        if (!seenTypes.Add(line.GetType()))
-                                        {
-                                            Debug.Log("Need to handle " + line.GetType());
-                                        }
+                                        Log("Need to handle " + line.GetType());
                                         break;
                                     default:
-                                        Debug.Log("Unrecognized line type: " + line.GetType());
+                                        Log("Unrecognized line type: " + line.GetType());
                                         break;
                                 }
                                 break;
@@ -220,6 +199,60 @@ namespace TestDDLCMod
                 }
                 //rawBlocks.Add(labelEntry.Key, BuildBlock(labelEntry.Key, labelEntry.Value));
             }
+        }
+
+        private static void LogExpression(CompiledExpression expression)
+        {
+            AddDepth();
+            foreach (var instruction in expression.instructions)
+            {
+                switch (instruction.type)
+                {
+                    case InstructionType.LoadFloat:
+                        Log(instruction.type.ToString() + " " + expression.constantFloats[instruction.argumentIndex].ToString());
+                        break;
+                    case InstructionType.LoadVariable:
+                    case InstructionType.FunctionCall:
+                    case InstructionType.LoadString:
+                    case InstructionType.LoadAttribute:
+                    case InstructionType.MethodCall:
+                    case InstructionType.SetVariable:
+                    case InstructionType.SetAttribute:
+                        Log(instruction.type.ToString() + " " + expression.constantStrings[instruction.argumentIndex]);
+                        break;
+                    case InstructionType.LoadObject:
+                        Log(instruction.type.ToString() + " " + expression.constantObjects[instruction.argumentIndex].ToString());
+                        break;
+                    case InstructionType.ArrayDefinition:
+                        Log(instruction.type.ToString() + " " + instruction.argumentIndex);
+                        break;
+                    case InstructionType.Negate:
+                    case InstructionType.Add:
+                    case InstructionType.Substract:
+                    case InstructionType.Multiply:
+                    case InstructionType.Divide:
+                    case InstructionType.Equal:
+                    case InstructionType.NotEqual:
+                    case InstructionType.Greater:
+                    case InstructionType.GreaterEqual:
+                    case InstructionType.Less:
+                    case InstructionType.LessEqual:
+                    case InstructionType.Not:
+                    case InstructionType.And:
+                    case InstructionType.Or:
+                    case InstructionType.ArrayIndex:
+                    case InstructionType.ArrayIndexAssign:
+                    case InstructionType.IfElse:
+                    case InstructionType.LoadNone:
+                        Log(instruction.type.ToString());
+                        break;
+                    case InstructionType.Unknown:
+                        Log("Unknown instruction?");
+                        break;
+                }
+                ++lineNumber;
+            }
+            SubDepth();
         }
 
         static RenpyBlock BuildBlock(string name, PythonObj block)
