@@ -21,6 +21,8 @@ namespace TestDDLCMod
             MaybeModContext(__instance, ____executionContext);
         }
 
+        private static bool DumpBlocks = false;
+
         private static int depth = "[Info   : Unity Log] ".Length;
         private static int lineNumber = 0;
         private static Stack<int> lineStack = new Stack<int>();
@@ -65,325 +67,376 @@ namespace TestDDLCMod
             {
                 if (rawBlocks.ContainsKey(Key))
                 {
-                    //Debug.Log("Removing label " + Key);
                     RenpyBlock block = rawBlocks[Key];
                     BlockEntryPoint entryPoint = rawBlockEntryPoints[Key];
-                    //rawBlocks.Remove(Key);
 
-                    //Debug.Log("BLOCK " + block.Label + ":");
-                    Log(Key + ":");
-                    AddDepth();
-                    foreach (var line in block.Contents)
+                    //rawBlocks.Remove(Key);
+                    //rawBlocks.Add(labelEntry.Key, BuildBlock(labelEntry.Key, labelEntry.Value));
+
+                    if (DumpBlocks)
                     {
-                        if (lineNumber == entryPoint.startOffset)
+                        DumpBlock(Key, block, entryPoint);
+                    }
+                }
+            }
+        }
+
+        private static void DumpBlock(string Key, RenpyBlock block, BlockEntryPoint entryPoint)
+        {
+            Log(Key + ":");
+            AddDepth();
+            foreach (var line in block.Contents)
+            {
+                if (lineNumber == entryPoint.startOffset)
+                {
+                    markEntry = true;
+                }
+                switch (line)
+                {
+                    case RenpyLoadImage renpyLoadImage:
+                        Log("\"images/" + renpyLoadImage.fullImageDetails + "\"");
+                        break;
+                    case RenpyGoTo renpyGoTo:
+                        var gotoDump = renpyGoTo.IsCall ? "call " : "jump ";
+                        if (renpyGoTo.TargetLabel != "")
                         {
-                            markEntry = true;
+                            gotoDump += renpyGoTo.TargetLabel;
                         }
-                        switch (line)
+                        else
                         {
-                            case RenpyLoadImage renpyLoadImage:
-                                Log("\"images/" + renpyLoadImage.fullImageDetails + "\"");
+                            gotoDump += renpyGoTo.targetExpression.ToString();
+                        }
+                        if (renpyGoTo.IsCall)
+                        {
+                            gotoDump += "(" + renpyGoTo.callParameters.Join(p => p.expression.ToString()) + ")";
+                        }
+                        Log(gotoDump);
+                        break;
+                    case RenpySize renpySize:
+                        if (!renpySize.SizeData.StartsWith("size(") && !renpySize.SizeData.StartsWith("size ("))
+                        {
+                            Log("Weird size:");
+                        }
+                        Log(renpySize.SizeData);
+                        break;
+                    case RenpyPause renpyPause:
+                        Log(renpyPause.PauseData);
+                        break;
+                    case RenpyEasedTransform renpyEasedTransform:
+                        Log(renpyEasedTransform.TransformCommand);
+                        break;
+                    case RenpyGoToLineUnless renpyGoToLineUnless:
+                        Log("goto " + renpyGoToLineUnless.TargetLine + " unless " + renpyGoToLineUnless.ConditionText);
+                        break;
+                    case RenpyNOP renpyNOP:
+                        Log("pass");
+                        break;
+                    case RenpyImmediateTransform renpyImmediateTransform:
+                        Log(renpyImmediateTransform.TransformCommand);
+                        break;
+                    case RenpyGoToLine renpyGoToLine:
+                        Log("goto " + renpyGoToLine.TargetLine);
+                        break;
+                    case RenpyForkGoToLine renpyForkGoToLine:
+                        if (!renpyForkGoToLine.ParentJump)
+                        {
+                            Debug.LogWarning("Found a ForkGoToLine that's not a ParentJump");
+                        }
+                        Log("fork goto " + renpyForkGoToLine.TargetLine);
+                        break;
+                    case RenpyReturn renpyReturn:
+                        Log("return");
+                        break;
+                    case RenpyStandardProxyLib.Expression expression:
+                        Log("expr" + (expression.WaitInteraction ? " (wait)" : "") + ":");
+                        LogExpression(expression.Expr);
+                        break;
+                    case RenpyLabelEntryPoint renpyLabelEntryPoint:
+                        var data = renpyLabelEntryPoint.NestedLabelData;
+                        var name = data.Substring(0, data.IndexOf(" "));
+                        var label = data.Substring(data.IndexOf(" ") + 1);
+                        var hasParameters = false;
+                        switch (name)
+                        {
+                            case "contains":
+                            case "block":
+                                Log(name + ":");
                                 break;
-                            case RenpyGoTo renpyGoTo:
-                                var gotoDump = renpyGoTo.IsCall ? "call " : "jump ";
-                                if (renpyGoTo.TargetLabel != "")
+                            case "label":
+                                label = renpyLabelEntryPoint.entryPoint.label;
+                                Log(label + ":");
+                                if (renpyLabelEntryPoint.entryPoint.callParameters.Length > 0)
                                 {
-                                    gotoDump += renpyGoTo.TargetLabel;
-                                }
-                                else
-                                {
-                                    gotoDump += renpyGoTo.targetExpression.ToString();
-                                }
-                                if (renpyGoTo.IsCall)
-                                {
-                                    gotoDump += "(" + renpyGoTo.callParameters.Join(p => p.expression.ToString()) + ")";
-                                }
-                                Log(gotoDump);
-                                break;
-                            case RenpySize renpySize:
-                                if (!renpySize.SizeData.StartsWith("size(") && !renpySize.SizeData.StartsWith("size ("))
-                                {
-                                    Log("Weird size:");
-                                }
-                                Log(renpySize.SizeData);
-                                break;
-                            case RenpyPause renpyPause:
-                                Log(renpyPause.PauseData);
-                                break;
-                            case RenpyEasedTransform renpyEasedTransform:
-                                Log(renpyEasedTransform.TransformCommand);
-                                break;
-                            case RenpyGoToLineUnless renpyGoToLineUnless:
-                                Log("goto " + renpyGoToLineUnless.TargetLine + " unless " + renpyGoToLineUnless.ConditionText);
-                                break;
-                            case RenpyNOP renpyNOP:
-                                Log("pass");
-                                break;
-                            case RenpyImmediateTransform renpyImmediateTransform:
-                                Log(renpyImmediateTransform.TransformCommand);
-                                break;
-                            case RenpyGoToLine renpyGoToLine:
-                                Log("goto " + renpyGoToLine.TargetLine);
-                                break;
-                            case RenpyForkGoToLine renpyForkGoToLine:
-                                if (!renpyForkGoToLine.ParentJump)
-                                {
-                                    Debug.LogWarning("Found a ForkGoToLine that's not a ParentJump");
-                                }
-                                Log("fork goto " + renpyForkGoToLine.TargetLine);
-                                break;
-                            case RenpyReturn renpyReturn:
-                                Log("return");
-                                break;
-                            case RenpyStandardProxyLib.Expression expression:
-                                Log("expr" + (expression.WaitInteraction ? " (wait)" : "") + ":");
-                                LogExpression(expression.Expr);
-                                break;
-                            case RenpyLabelEntryPoint renpyLabelEntryPoint:
-                                var data = renpyLabelEntryPoint.NestedLabelData;
-                                var name = data.Substring(0, data.IndexOf(" "));
-                                var label = data.Substring(data.IndexOf(" ") + 1);
-                                var hasParameters = false;
-                                switch (name)
-                                {
-                                    case "contains":
-                                    case "block":
-                                        Log(name + ":");
-                                        break;
-                                    case "label":
-                                        label = renpyLabelEntryPoint.entryPoint.label;
-                                        Log(label + ":");
-                                        if (renpyLabelEntryPoint.entryPoint.callParameters.Length > 0)
-                                        {
-                                            hasParameters = true;
-                                            LogParameters(renpyLabelEntryPoint.entryPoint.callParameters);
-                                        }
-                                        break;
-                                    default:
-                                        Log("Unrecognized nestedLabelData: " + data);
-                                        break;
-                                }
-                                if (renpyLabelEntryPoint.entryPoint.rootLabel != Key)
-                                {
-                                    Log("Weird rootLabel: " + renpyLabelEntryPoint.entryPoint.rootLabel);
-                                }
-                                if (renpyLabelEntryPoint.entryPoint.label != label)
-                                {
-                                    Log("Weird label: " + label + " vs " + renpyLabelEntryPoint.entryPoint.label);
-                                }
-                                if (renpyLabelEntryPoint.entryPoint.startIndex != lineNumber)
-                                {
-                                    Log("Weird startIndex:" + renpyLabelEntryPoint.entryPoint.startIndex);
-                                }
-                                if (!hasParameters && renpyLabelEntryPoint.entryPoint.callParameters.Length != 0)
-                                {
-                                    Log("Weird callParameters:");
+                                    hasParameters = true;
                                     LogParameters(renpyLabelEntryPoint.entryPoint.callParameters);
                                 }
                                 break;
-                            case RenpyShow renpyShow:
-                                var show = renpyShow.show;
-                                var toLog = "show";
-                                if (show.IsStringCall)
-                                {
-                                    toLog += " expression:";
-                                    Log(toLog);
-                                    toLog = "";
-                                    LogExpression(show.StringCall);
-                                }
-                                else if (show.IsLayer)
-                                {
-                                    toLog += " layer " + show.Layer;
-                                }
-                                else
-                                {
-                                    toLog += " " + show.AssetName;
-                                }
-                                if (show.As != "")
-                                {
-                                    toLog += " as " + show.As;
-                                }
-                                var transform = show.TransformName;
-                                if (transform == "" && show.IsLayer)
-                                {
-                                    transform = "resetlayer";
-                                }
-                                if (transform != "")
-                                {
-                                    toLog += " at " + show.TransformName;
-                                    if (show.TransformCallParameters.Length > 0)
-                                    {
-                                        toLog += ":";
-                                        Log(toLog);
-                                        toLog = "";
-                                        LogParameters(show.TransformCallParameters);
-                                    }
-                                }
-                                else if (show.TransformCallParameters.Length > 0)
-                                {
-                                    Debug.Log("Why does show statement without transform have parameters?");
-                                    LogParameters(show.TransformCallParameters);
-                                }
-                                if (show.HasBehind)
-                                {
-                                    toLog += " behind " + show.Behind;
-                                }
-                                toLog += " onlayer " + show.Layer;
-                                if (show.HasZOrder)
-                                {
-                                    toLog += " zorder " + show.ZOrder;
-                                }
-                                Log(toLog);
-                                break;
-                            case RenpyWith renpyWith:
-                                Log("with:");
-                                LogExpression(renpyWith.With);
-                                break;
-                            case RenpyStandardProxyLib.Text text:
-                                Log("text:");
-                                LogParameters(text.CallParameters);
-                                break;
-                            case RenpyHide renpyHide:
-                                var hide = renpyHide.hide;
-                                if (hide.IsScreen)
-                                {
-                                    Log("hide screen " + hide.Name);
-                                }
-                                else
-                                {
-                                    Log("hide " + hide.Name);
-                                }
-                                break;
-                            case RenpyOneLinePython renpyOneLinePython:
-                                var oneLinePython = GetPrivateField<RenpyOneLinePython, OneLinePython>(renpyOneLinePython, "m_OneLinePython");
-                                Log("$");
-                                LogExpression(oneLinePython.compiledExpression);
-                                break;
-                            case RenpyInlinePython renpyInlinePython:
-                                var inlinePython = GetPrivateField<RenpyInlinePython, InLinePython>(renpyInlinePython, "m_InlinePython");
-                                Log("python " + inlinePython.functionName);
-                                break;
-                            case RenpyTime renpyTime:
-                                Log("time:");
-                                LogExpression(renpyTime.expression);
-                                break;
-                            case RenpyScene renpyScene:
-                                var scene = renpyScene.scene;
-                                toLog = "scene";
-                                if (scene.HasLayer)
-                                {
-                                    toLog += " " + scene.Layer;
-                                }
-                                toLog += " " + scene.Image;
-                                Log(toLog);
-                                break;
-                            case RenpyPlay renpyPlay:
-                                var play = renpyPlay.play;
-                                toLog = "play";
-                                toLog += " " + play.Channel;
-                                toLog += " '" + play.Asset + "'";
-                                if (play.fadeout != 0)
-                                {
-                                    toLog += " fadeout " + play.fadeout;
-                                }
-                                if (play.fadein != 0)
-                                {
-                                    toLog += " fadein " + play.fadein;
-                                }
-                                Log(toLog);
-                                break;
-                            case RenpyUnlock renpyUnlock:
-                                var unlock = renpyUnlock.unlock;
-                                toLog = "unlock";
-                                toLog += " " + unlock.UnlockName;
-                                if (unlock.UnlockType == UnlockInfo.UnlockType.Normal)
-                                {
-                                    toLog += " " + unlock.UnlockId;
-                                } else
-                                {
-                                    toLog += " " + unlock.UnlockType;
-                                }
-                                Log(toLog);
-                                break;
-                            case RenpyStandardProxyLib.WindowAuto windowAuto:
-                                Log("window auto " + (windowAuto.show ? "show" : "hide"));
-                                break;
-                            case RenpyStandardProxyLib.WaitForScreen waitForScreen:
-                                Log("wait for screen " + waitForScreen.screen);
-                                break;
-                            case RenpySetRandomRange renpySetRandomRange:
-                                Log("$ randrangevalue = renpy.random.randint(0, " + (renpySetRandomRange.Range - 1) + ")");
-                                break;
-                            case RenpyFunction renpyFunction:
-                            case RenpyMenuInput renpyMenuInput:
-                            case RenpyQueue renpyQueue:
-                            case RenpyStop renpyStop:
-                            case RenpyWindow renpyWindow:
-                                Log("Need to handle " + line.GetType());
-                                break;
                             default:
-                                switch (line.GetType().ToString())
-                                {
-                                    case "RenpyParser.RenpyDialogueLine":
-                                        var dialogueLine = line.GetType().GetField("m_DialogueLine", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(line) as DialogueLine;
-                                        if (dialogueLine.CommandType != "say")
-                                        {
-                                            Log("dialogueLine.CommandType: " + dialogueLine.CommandType);
-                                        }
-                                        if (dialogueLine.HasCps)
-                                        {
-                                            Log("dialogueLine.Cps: " + dialogueLine.Cps);
-                                            Log("dialogueLine.CpsEndIndex: " + dialogueLine.CpsEndIndex);
-                                            Log("dialogueLine.CpsStartIndex: " + dialogueLine.CpsStartIndex);
-                                        }
-                                        if (dialogueLine.DeveloperCommentary)
-                                        {
-                                            Log("dialogueLine.DeveloperCommentary");
-                                        }
-                                        if (dialogueLine.ImmediateUntil != 0)
-                                        {
-                                            Log("dialogueLine.ImmediateUntil: " + dialogueLine.ImmediateUntil);
-                                        }
-                                        if (dialogueLine.IsCpsMultiplier)
-                                        {
-                                            Log("dialogueLine.IsCpsMultiplier");
-                                        }
-                                        if (dialogueLine.Label != Key)
-                                        {
-                                            Log("dialogueLine.Label: " + dialogueLine.Label);
-                                        }
-                                        if (dialogueLine.SkipWait)
-                                        {
-                                            Log("dialogueLine.SkipWait");
-                                        }
-                                        if (dialogueLine.WaitIndicesAndTimes.Count > 0)
-                                        {
-                                            Log("dialogueLine.WaitIndicesAndTimes: " + dialogueLine.WaitIndicesAndTimes.Join(t => "(" + t.Item1 + ", " + t.Item2 + ")"));
-                                        }
-                                        toLog = "\"" + Renpy.Text.GetLocalisedString(dialogueLine.TextID, label: dialogueLine.Label) + "\"";
-                                        if (dialogueLine.Variant != "")
-                                        {
-                                            toLog = dialogueLine.Variant + " " + toLog;
-                                        }
-                                        if (dialogueLine.Tag != "")
-                                        {
-                                            toLog = dialogueLine.Tag + " " + toLog;
-                                        }
-                                        Log(toLog);
-                                        break;
-                                    default:
-                                        Log("Unrecognized line type: " + line.GetType());
-                                        break;
-                                }
+                                Log("Unrecognized nestedLabelData: " + data);
                                 break;
                         }
-                        ++lineNumber;
-                    }
-                    SubDepth();
-                    ++lineNumber;
+                        if (renpyLabelEntryPoint.entryPoint.rootLabel != Key)
+                        {
+                            Log("Weird rootLabel: " + renpyLabelEntryPoint.entryPoint.rootLabel);
+                        }
+                        if (renpyLabelEntryPoint.entryPoint.label != label)
+                        {
+                            Log("Weird label: " + label + " vs " + renpyLabelEntryPoint.entryPoint.label);
+                        }
+                        if (renpyLabelEntryPoint.entryPoint.startIndex != lineNumber)
+                        {
+                            Log("Weird startIndex:" + renpyLabelEntryPoint.entryPoint.startIndex);
+                        }
+                        if (!hasParameters && renpyLabelEntryPoint.entryPoint.callParameters.Length != 0)
+                        {
+                            Log("Weird callParameters:");
+                            LogParameters(renpyLabelEntryPoint.entryPoint.callParameters);
+                        }
+                        break;
+                    case RenpyShow renpyShow:
+                        var show = renpyShow.show;
+                        var toLog = "show";
+                        if (show.IsStringCall)
+                        {
+                            toLog += " expression:";
+                            Log(toLog);
+                            toLog = "";
+                            LogExpression(show.StringCall);
+                        }
+                        else if (show.IsLayer)
+                        {
+                            toLog += " layer " + show.Layer;
+                        }
+                        else
+                        {
+                            toLog += " " + show.AssetName;
+                        }
+                        if (show.As != "")
+                        {
+                            toLog += " as " + show.As;
+                        }
+                        var transform = show.TransformName;
+                        if (transform == "" && show.IsLayer)
+                        {
+                            transform = "resetlayer";
+                        }
+                        if (transform != "")
+                        {
+                            toLog += " at " + show.TransformName;
+                            if (show.TransformCallParameters.Length > 0)
+                            {
+                                toLog += ":";
+                                Log(toLog);
+                                toLog = "";
+                                LogParameters(show.TransformCallParameters);
+                            }
+                        }
+                        else if (show.TransformCallParameters.Length > 0)
+                        {
+                            Debug.Log("Why does show statement without transform have parameters?");
+                            LogParameters(show.TransformCallParameters);
+                        }
+                        if (show.HasBehind)
+                        {
+                            toLog += " behind " + show.Behind;
+                        }
+                        toLog += " onlayer " + show.Layer;
+                        if (show.HasZOrder)
+                        {
+                            toLog += " zorder " + show.ZOrder;
+                        }
+                        Log(toLog);
+                        break;
+                    case RenpyWith renpyWith:
+                        Log("with:");
+                        LogExpression(renpyWith.With);
+                        break;
+                    case RenpyStandardProxyLib.Text text:
+                        Log("text:");
+                        LogParameters(text.CallParameters);
+                        break;
+                    case RenpyHide renpyHide:
+                        var hide = renpyHide.hide;
+                        if (hide.IsScreen)
+                        {
+                            Log("hide screen " + hide.Name);
+                        }
+                        else
+                        {
+                            Log("hide " + hide.Name);
+                        }
+                        break;
+                    case RenpyOneLinePython renpyOneLinePython:
+                        var oneLinePython = GetPrivateField<RenpyOneLinePython, OneLinePython>(renpyOneLinePython, "m_OneLinePython");
+                        Log("$");
+                        LogExpression(oneLinePython.compiledExpression);
+                        break;
+                    case RenpyInlinePython renpyInlinePython:
+                        var inlinePython = GetPrivateField<RenpyInlinePython, InLinePython>(renpyInlinePython, "m_InlinePython");
+                        Log("python " + inlinePython.functionName);
+                        break;
+                    case RenpyTime renpyTime:
+                        Log("time:");
+                        LogExpression(renpyTime.expression);
+                        break;
+                    case RenpyScene renpyScene:
+                        var scene = renpyScene.scene;
+                        toLog = "scene";
+                        if (scene.HasLayer)
+                        {
+                            toLog += " " + scene.Layer;
+                        }
+                        toLog += " " + scene.Image;
+                        Log(toLog);
+                        break;
+                    case RenpyPlay renpyPlay:
+                        var play = renpyPlay.play;
+                        toLog = "play";
+                        toLog += " " + play.Channel;
+                        toLog += " " + play.Asset;
+                        if (play.fadeout != 0)
+                        {
+                            toLog += " fadeout " + play.fadeout;
+                        }
+                        if (play.fadein != 0)
+                        {
+                            toLog += " fadein " + play.fadein;
+                        }
+                        Log(toLog);
+                        break;
+                    case RenpyUnlock renpyUnlock:
+                        var unlock = renpyUnlock.unlock;
+                        toLog = "unlock";
+                        toLog += " " + unlock.UnlockName;
+                        if (unlock.UnlockType == UnlockInfo.UnlockType.Normal)
+                        {
+                            toLog += " " + unlock.UnlockId;
+                        }
+                        else
+                        {
+                            toLog += " " + unlock.UnlockType;
+                        }
+                        Log(toLog);
+                        break;
+                    case RenpyStandardProxyLib.WindowAuto windowAuto:
+                        Log("window auto " + (windowAuto.show ? "show" : "hide"));
+                        break;
+                    case RenpyStandardProxyLib.WaitForScreen waitForScreen:
+                        Log("wait for screen " + waitForScreen.screen);
+                        break;
+                    case RenpySetRandomRange renpySetRandomRange:
+                        Log("$ randrangevalue = renpy.random.randint(0, " + (renpySetRandomRange.Range - 1) + ")");
+                        break;
+                    case RenpyStop renpyStop:
+                        var stop = renpyStop.stop;
+                        toLog = "stop " + stop.Channel;
+                        if (stop.fadeout != 0)
+                        {
+                            toLog += " fadeout " + stop.fadeout;
+                        }
+                        Log(toLog);
+                        break;
+                    case RenpyWindow renpyWindow:
+                        var window = renpyWindow.window;
+                        toLog = "window " + window.Mode.ToString().ToLower();
+                        if (window.Transition.IsEmpty())
+                        {
+                            Log(toLog);
+                        }
+                        else
+                        {
+                            Log(toLog + ":");
+                            LogExpression(window.Transition);
+                        }
+                        break;
+                    case RenpyMenuInput renpyMenuInput:
+                        if (renpyMenuInput.parentLabel != Key)
+                        {
+                            Log("renpyMenuInput.parentLabel: " + renpyMenuInput.parentLabel);
+                        }
+                        if (renpyMenuInput.hideWindow)
+                        {
+                            Log("renpyMenuInput.hideWindow");
+                        }
+                        Log("menu:");
+                        AddDepth();
+                        foreach (var entry in renpyMenuInput.entries)
+                        {
+                            var text = "\"" + Renpy.Text.GetLocalisedString(entry.textID, label: renpyMenuInput.parentLabel) + "\"";
+                            Log(text + ": goto " + entry.gotoLineTarget);
+                            LogExpression(entry.compiledExpression);
+                            ++lineNumber;
+                        }
+                        SubDepth();
+                        break;
+                    case RenpyFunction renpyFunction:
+                        var function = GetPrivateField<RenpyFunction, Function>(renpyFunction, "m_Function");
+                        Log("function " + function.FunctionName);
+                        break;
+                    case RenpyQueue renpyQueue:
+                        var queue = renpyQueue.queue;
+                        Log("queue " + queue.Channel + " " + queue.Asset);
+                        break;
+                    default:
+                        switch (line.GetType().ToString())
+                        {
+                            case "RenpyParser.RenpyDialogueLine":
+                                var dialogueLine = line.GetType().GetField("m_DialogueLine", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(line) as DialogueLine;
+                                if (dialogueLine.CommandType != "say")
+                                {
+                                    Log("dialogueLine.CommandType: " + dialogueLine.CommandType);
+                                }
+                                if (dialogueLine.HasCps)
+                                {
+                                    Log("dialogueLine.Cps: " + dialogueLine.Cps);
+                                    Log("dialogueLine.CpsEndIndex: " + dialogueLine.CpsEndIndex);
+                                    Log("dialogueLine.CpsStartIndex: " + dialogueLine.CpsStartIndex);
+                                }
+                                if (dialogueLine.DeveloperCommentary)
+                                {
+                                    Log("dialogueLine.DeveloperCommentary");
+                                }
+                                if (dialogueLine.ImmediateUntil != 0)
+                                {
+                                    Log("dialogueLine.ImmediateUntil: " + dialogueLine.ImmediateUntil);
+                                }
+                                if (dialogueLine.IsCpsMultiplier)
+                                {
+                                    Log("dialogueLine.IsCpsMultiplier");
+                                }
+                                if (dialogueLine.Label != Key)
+                                {
+                                    Log("dialogueLine.Label: " + dialogueLine.Label);
+                                }
+                                if (dialogueLine.SkipWait)
+                                {
+                                    Log("dialogueLine.SkipWait");
+                                }
+                                if (dialogueLine.WaitIndicesAndTimes.Count > 0)
+                                {
+                                    Log("dialogueLine.WaitIndicesAndTimes: " + dialogueLine.WaitIndicesAndTimes.Join(t => "(" + t.Item1 + ", " + t.Item2 + ")"));
+                                }
+                                toLog = "\"" + Renpy.Text.GetLocalisedString(dialogueLine.TextID, label: dialogueLine.Label) + "\"";
+                                if (dialogueLine.Variant != "")
+                                {
+                                    toLog = dialogueLine.Variant + " " + toLog;
+                                }
+                                if (dialogueLine.Tag != "")
+                                {
+                                    toLog = dialogueLine.Tag + " " + toLog;
+                                }
+                                Log(toLog);
+                                break;
+                            default:
+                                Log("Unrecognized line type: " + line.GetType());
+                                break;
+                        }
+                        break;
                 }
-                //rawBlocks.Add(labelEntry.Key, BuildBlock(labelEntry.Key, labelEntry.Value));
+                ++lineNumber;
             }
+            SubDepth();
+            ++lineNumber;
         }
 
         private static U GetPrivateField<T, U>(T obj, string field) where T : class where U : class
