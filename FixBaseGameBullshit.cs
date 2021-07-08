@@ -1,10 +1,12 @@
 ﻿using HarmonyLib;
 using RenpyLauncher;
+using RenpyParser;
 using SimpleExpressionEngine;
 using System;
 using System.Collections.Generic;
 using System.Reflection.Emit;
 using UnityEngine;
+using Parser = SimpleExpressionEngine.Parser;
 
 namespace TestDDLCMod
 {
@@ -42,7 +44,7 @@ namespace TestDDLCMod
     // parser incorrectly consumes the comma after a leading integer in the parameter list because it
     // isn't told it's parsing parameters until after the first token
     [HarmonyPatch(typeof(Parser), "ParseArrayDefinition")]
-    public static class InspectParserParseArrayDefinition
+    public static class FixParsingArrays
     {
         static void Prefix(Parser __instance)
         {
@@ -60,6 +62,29 @@ namespace TestDDLCMod
                     yield return new CodeInstruction(OpCodes.Ldfld, AccessTools.Field(typeof(Parser), "_tokenizer"));
                     yield return new CodeInstruction(OpCodes.Ldc_I4_0);
                     yield return new CodeInstruction(OpCodes.Callvirt, AccessTools.Method(typeof(Tokenizer), "ParsingParameters"));
+                }
+                else
+                {
+                    yield return instruction;
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(OneLinePython), "Parse")]
+    public static class LetMeHandleSyntaxExceptions
+    {
+        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            foreach (var instruction in instructions)
+            {
+                if (instruction.Is(OpCodes.Ldstr, "\n Error on "))
+                {
+                    yield return instruction;
+                    yield return new CodeInstruction(OpCodes.Pop);
+                    yield return new CodeInstruction(OpCodes.Throw);
+                    yield return new CodeInstruction(OpCodes.Ldstr, "Not the exception oops");
+                    yield return new CodeInstruction(OpCodes.Ldstr, "; not an error string either");
                 }
                 else
                 {

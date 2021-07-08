@@ -62,7 +62,7 @@ namespace TestDDLCMod
                         Debug.LogWarning("Unexpected top level statement: " + stmt.Name);
                         break;
                 }
-                DumpStatement(stmt);
+                //DumpStatement(stmt);
             }
             Ok = true;
         }
