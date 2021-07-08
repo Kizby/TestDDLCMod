@@ -5,6 +5,7 @@ using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using RenPyParser.VGPrompter.Script.Internal;
 using SimpleExpressionEngine;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
@@ -442,6 +443,10 @@ namespace TestDDLCMod
         {
             return typeof(T).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(obj) as U;
         }
+        private static void SetPrivateField<T, U>(T obj, string field, U value) where T : class where U : class
+        {
+            typeof(T).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(obj, value);
+        }
 
         private static void LogParameters(IEnumerable<RenpyCallParameter> parameters)
         {
@@ -534,6 +539,7 @@ namespace TestDDLCMod
 
         private static HashSet<string> seenNames = new HashSet<string>();
         private static Dictionary<Line, Line> jumpMap = new Dictionary<Line, Line>();
+        private static List<Tuple<string, SyntaxException>> unparseablePython = new List<Tuple<string, SyntaxException>>();
         private static void ParsePythonObj(PythonObj obj, List<Line> container)
         {
             switch (obj.Name)
@@ -541,7 +547,7 @@ namespace TestDDLCMod
                 case "renpy.ast.While":
                     var conditionString = ExtractPyExpr(obj.Fields["condition"]);
                     var condition = SimpleExpressionEngine.Parser.Compile(conditionString);
-                    condition.AddInstruction(InstructionType.Not);
+                    condition.AddInstruction(InstructionType.Not); // since this is a goto unless, we need to negate the condition
                     var gotoStmt = new RenpyGoToLineUnless(conditionString, -1);
                     gotoStmt.CompiledExpression = condition;
                     container.Add(gotoStmt);
@@ -556,7 +562,20 @@ namespace TestDDLCMod
                     jumpMap.Add(gotoStmt, gotoTarget);
                     break;
                 case "renpy.ast.Return":
+                    container.Add(new RenpyReturn());
+                    break;
                 case "renpy.ast.Python":
+                    var codeString = ExtractPyExpr(obj.Fields["code"]);
+                    try
+                    {
+                        RenpyOneLinePython renpyOneLinePython = new RenpyOneLinePython("$" + codeString);
+                        container.Add(renpyOneLinePython);
+                    }
+                    catch (SyntaxException e)
+                    {
+                        unparseablePython.Add(Tuple.Create(codeString, e));
+                    }
+                    break;
                 case "renpy.ast.If":
                 case "renpy.ast.Translate":
                 case "renpy.ast.EndTranslate":
