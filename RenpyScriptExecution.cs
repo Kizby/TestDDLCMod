@@ -50,7 +50,7 @@ namespace TestDDLCMod
         }
         private static string Indent(string s) => s.Replace("\n", "\n" + new string(' ', depth + 1 + (lineNumber + ": ").Length));
 
-        static void MaybeModContext(RenpyScriptExecution instance, RenpyExecutionContext context)
+        private static void MaybeModContext(RenpyScriptExecution instance, RenpyExecutionContext context)
         {
             if (!Mod.IsModded())
             {
@@ -518,26 +518,43 @@ namespace TestDDLCMod
             SubDepth();
         }
 
-        static RenpyBlock BuildBlock(string name, PythonObj block)
+        private static RenpyBlock BuildBlock(string name, PythonObj block)
         {
             var result = new RenpyBlock(name);
-            foreach (var statement in block.Fields["block"].List)
+            foreach (var pythonObj in block.Fields["block"].List)
             {
-                ParseStatement(statement, result.Contents);
+                ParsePythonObj(pythonObj, result.Contents);
             }
-            foreach (var statement in block.Fields["block"].List)
+            foreach (var statement in result.Contents)
             {
-                FinalizeStatement(statement, result.Contents);
+                FinalizeLine(statement, result.Contents);
             }
             return result;
         }
 
-        static HashSet<string> seenNames = new HashSet<string>();
-        static Line ParseStatement(PythonObj statement, List<Line> container)
+        private static HashSet<string> seenNames = new HashSet<string>();
+        private static Dictionary<Line, Line> jumpMap = new Dictionary<Line, Line>();
+        private static void ParsePythonObj(PythonObj obj, List<Line> container)
         {
-            switch (statement.Name)
+            switch (obj.Name)
             {
                 case "renpy.ast.While":
+                    var conditionString = ExtractPyExpr(obj.Fields["condition"]);
+                    var condition = SimpleExpressionEngine.Parser.Compile(conditionString);
+                    condition.AddInstruction(InstructionType.Not);
+                    var gotoStmt = new RenpyGoToLineUnless(conditionString, -1);
+                    gotoStmt.CompiledExpression = condition;
+                    container.Add(gotoStmt);
+
+                    foreach (var stmt in obj.Fields["block"].List)
+                    {
+                        ParsePythonObj(stmt, container);
+                    }
+
+                    var gotoTarget = new RenpyNOP();
+                    container.Add(gotoStmt);
+                    jumpMap.Add(gotoStmt, gotoTarget);
+                    break;
                 case "renpy.ast.Return":
                 case "renpy.ast.Python":
                 case "renpy.ast.If":
@@ -554,40 +571,39 @@ namespace TestDDLCMod
                 case "renpy.ast.Jump":
                 case "renpy.ast.Label":
                 default:
-                    if (seenNames.Add(statement.Name))
+                    if (seenNames.Add(obj.Name))
                     {
-                        Debug.Log("Need to implement " + statement.Name);
+                        Debug.Log("Need to implement " + obj.Name);
                     }
-                    return null;
+                    return;
             }
         }
-        static Line FinalizeStatement(PythonObj statement, List<Line> container)
+        private static void FinalizeLine(Line line, List<Line> container)
         {
-            switch (statement.Name)
+            switch (line)
             {
-                case "renpy.ast.While":
-                case "renpy.ast.Return":
-                case "renpy.ast.Python":
-                case "renpy.ast.If":
-                case "renpy.ast.Translate":
-                case "renpy.ast.EndTranslate":
-                case "renpy.ast.Call":
-                case "renpy.ast.Pass":
-                case "renpy.ast.UserStatement":
-                case "renpy.ast.Show":
-                case "renpy.ast.Hide":
-                case "renpy.ast.ShowLayer":
-                case "renpy.ast.Scene":
-                case "renpy.ast.With":
-                case "renpy.ast.Jump":
-                case "renpy.ast.Label":
-                default:
-                    if (seenNames.Add(statement.Name))
-                    {
-                        Debug.Log("Need to implement " + statement.Name);
-                    }
-                    return null;
+                case RenpyGoToLineUnless goToLineUnless:
+                    goToLineUnless.TargetLine = container.IndexOf(jumpMap[goToLineUnless]);
+                    break;
             }
+        }
+        private static string ExtractPyExpr(PythonObj expr)
+        {
+            if (expr.Name == "renpy.ast.PyExpr")
+            {
+                return expr.Args.Tuple[0].String;
+            }
+            else if (expr.Name == "renpy.ast.PyCode")
+            {
+                var source = expr.Fields["source"];
+                if (source.Type == PythonObj.ObjType.STRING)
+                {
+                    return source.String;
+                }
+                return ExtractPyExpr(expr.Fields["source"]);
+            }
+            Debug.LogError("Trying to extractPyExpr on a " + expr.Name);
+            return "";
         }
     }
 }
