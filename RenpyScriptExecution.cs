@@ -87,7 +87,7 @@ namespace TestDDLCMod
                                 Log(gotoDump);
                                 break;
                             case RenpySize renpySize:
-                                if (!renpySize.SizeData.StartsWith("size("))
+                                if (!renpySize.SizeData.StartsWith("size(") && !renpySize.SizeData.StartsWith("size ("))
                                 {
                                     Log("Weird size:");
                                 }
@@ -105,18 +105,83 @@ namespace TestDDLCMod
                             case RenpyNOP renpyNOP:
                                 Log("");
                                 break;
-                            case RenpyForkGoToLine renpyForkGoToLine:
-                            case RenpyFunction renpyFunction:
-                            case RenpyGoToLine renpyGoToLine:
-                            case RenpyHide renpyHide:
                             case RenpyImmediateTransform renpyImmediateTransform:
+                                Log(renpyImmediateTransform.TransformCommand);
+                                break;
+                            case RenpyGoToLine renpyGoToLine:
+                                Log("goto " + renpyGoToLine.TargetLine);
+                                break;
+                            case RenpyForkGoToLine renpyForkGoToLine:
+                                if (!renpyForkGoToLine.ParentJump)
+                                {
+                                    Debug.LogWarning("Found a ForkGoToLine that's not a ParentJump");
+                                }
+                                Log("fork goto " + renpyForkGoToLine.TargetLine);
+                                break;
+                            case RenpyReturn renpyReturn:
+                                Log("return");
+                                break;
+                            case RenpyStandardProxyLib.Expression expression:
+                                Log("expr" + (expression.WaitInteraction ? " (wait)" : "") + ":");
+                                AddDepth();
+                                foreach(var instruction in expression.Expr.instructions)
+                                {
+                                    switch (instruction.type)
+                                    {
+                                        case SimpleExpressionEngine.InstructionType.LoadFloat:
+                                            Log(instruction.type.ToString() + " " + expression.Expr.constantFloats[instruction.argumentIndex].ToString());
+                                            break;
+                                        case SimpleExpressionEngine.InstructionType.LoadVariable:
+                                        case SimpleExpressionEngine.InstructionType.FunctionCall:
+                                        case SimpleExpressionEngine.InstructionType.LoadString:
+                                        case SimpleExpressionEngine.InstructionType.LoadAttribute:
+                                        case SimpleExpressionEngine.InstructionType.MethodCall:
+                                        case SimpleExpressionEngine.InstructionType.SetVariable:
+                                        case SimpleExpressionEngine.InstructionType.SetAttribute:
+                                            Log(instruction.type.ToString() + " " + expression.Expr.constantStrings[instruction.argumentIndex]);
+                                            break;
+                                        case SimpleExpressionEngine.InstructionType.LoadObject:
+                                            Log(instruction.type.ToString() + " " + expression.Expr.constantObjects[instruction.argumentIndex].ToString());
+                                            break;
+                                        case SimpleExpressionEngine.InstructionType.ArrayDefinition:
+                                            Log(instruction.type.ToString() + " " + instruction.argumentIndex);
+                                            break;
+                                        case SimpleExpressionEngine.InstructionType.Negate:
+                                        case SimpleExpressionEngine.InstructionType.Add:
+                                        case SimpleExpressionEngine.InstructionType.Substract:
+                                        case SimpleExpressionEngine.InstructionType.Multiply:
+                                        case SimpleExpressionEngine.InstructionType.Divide:
+                                        case SimpleExpressionEngine.InstructionType.Equal:
+                                        case SimpleExpressionEngine.InstructionType.NotEqual:
+                                        case SimpleExpressionEngine.InstructionType.Greater:
+                                        case SimpleExpressionEngine.InstructionType.GreaterEqual:
+                                        case SimpleExpressionEngine.InstructionType.Less:
+                                        case SimpleExpressionEngine.InstructionType.LessEqual:
+                                        case SimpleExpressionEngine.InstructionType.Not:
+                                        case SimpleExpressionEngine.InstructionType.And:
+                                        case SimpleExpressionEngine.InstructionType.Or:
+                                        case SimpleExpressionEngine.InstructionType.ArrayIndex:
+                                        case SimpleExpressionEngine.InstructionType.ArrayIndexAssign:
+                                        case SimpleExpressionEngine.InstructionType.IfElse:
+                                        case SimpleExpressionEngine.InstructionType.LoadNone:
+                                            Log(instruction.type.ToString());
+                                            break;
+                                        case SimpleExpressionEngine.InstructionType.Unknown:
+                                            Log("Unknown instruction?");
+                                            break;
+                                    }
+                                    ++lineNumber;
+                                }
+                                SubDepth();
+                                break;
+                            case RenpyFunction renpyFunction:
+                            case RenpyHide renpyHide:
                             case RenpyInlinePython renpyInlinePython:
                             case RenpyLabelEntryPoint renpyLabelEntryPoint:
                             case RenpyMenuInput renpyMenuInput:
                             case RenpyOneLinePython renpyOneLinePython:
                             case RenpyPlay renpyPlay:
                             case RenpyQueue renpyQueue:
-                            case RenpyReturn renpyReturn:
                             case RenpyScene renpyScene:
                             case RenpySetRandomRange renpySetRandomRange:
                             case RenpyShow renpyShow:
@@ -125,7 +190,6 @@ namespace TestDDLCMod
                             case RenpyUnlock renpyUnlock:
                             case RenpyWindow renpyWindow:
                             case RenpyWith renpyWith:
-                            case RenpyStandardProxyLib.Expression expression:
                             case RenpyStandardProxyLib.Text text:
                             case RenpyStandardProxyLib.WindowAuto windowAuto:
                             case RenpyStandardProxyLib.WaitForScreen waitForScreen:
