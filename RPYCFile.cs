@@ -34,7 +34,7 @@ namespace TestDDLCMod
                 slotAST = GetSlotAST(fileBytes, magic.Length, 1);
             }
 
-            InitHandlers();
+            InitDumpers();
 
             var stmts = slotAST.Tuple[1];
             //Debug.Log(stmts);
@@ -62,7 +62,7 @@ namespace TestDDLCMod
                         Debug.LogWarning("Unexpected top level statement: " + stmt.Name);
                         break;
                 }
-                //HandleStatement(stmt);
+                DumpStatement(stmt);
             }
             Ok = true;
         }
@@ -91,26 +91,26 @@ namespace TestDDLCMod
             Debug.Log(new string(' ', depth - "[Info   : Unity Log] ".Length) + s);
         }
 
-        private void HandleStatement(PythonObj statement)
+        private void DumpStatement(PythonObj statement)
         {
             var name = statement.Name;
-            if (!handlers.ContainsKey(name))
+            if (!dumpers.ContainsKey(name))
             {
                 Log("Unhandled class: " + name);
             }
             else
             {
-                handlers[name](statement);
+                dumpers[name](statement);
             }
         }
 
-        private void HandleBlock(PythonObj container)
+        private void DumpBlock(PythonObj container)
         {
             ++depth;
             var block = container.Fields["block"].List;
             foreach (var statement in block)
             {
-                HandleStatement(statement);
+                DumpStatement(statement);
             }
             --depth;
         }
@@ -151,10 +151,10 @@ namespace TestDDLCMod
         private string Indent(string s) => s.Replace("\n", "\n" + new string(' ', depth + 1));
         private bool inInit = false;
 
-        Dictionary<string, Action<PythonObj>> handlers = null;
-        private void InitHandlers()
+        Dictionary<string, Action<PythonObj>> dumpers = null;
+        private void InitDumpers()
         {
-            handlers = new Dictionary<string, Action<PythonObj>>()
+            dumpers = new Dictionary<string, Action<PythonObj>>()
             {
                 {
                     "renpy.ast.Node", stmt =>
@@ -165,18 +165,18 @@ namespace TestDDLCMod
                 {
                     "renpy.ast.Label", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         // name, parameters, block, hide
                         var name = stmt.Fields["name"].String;
                         Log("label " + name + ":");
                         Labels[name] = stmt;
-                        //HandleBlock(stmt);
+                        DumpBlock(stmt);
                     }
                 },
                 {
                     "renpy.ast.Init", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         // block, priority
                         var priority = stmt.Fields["priority"].ToInt();
                         if (!Inits.ContainsKey(priority))
@@ -186,30 +186,30 @@ namespace TestDDLCMod
                         Inits[priority].Add(stmt);
                         Log("init");
                         inInit = true;
-                        //HandleBlock(stmt);
+                        DumpBlock(stmt);
                         inInit = false;
                     }
                 },
                 {
                     "renpy.ast.Translate", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         // identifier, language, block
                         Log("translate");
-                        HandleBlock(stmt);
+                        DumpBlock(stmt);
                     }
                 },
                 {
                     "renpy.ast.EndTranslate", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         Log("end translate");
                     }
                 },
                 {
                     "renpy.ast.Define", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         // varname, code, store
                         var store = ExtractStore(stmt);
                         if (!Stores.ContainsKey(store))
@@ -226,7 +226,7 @@ namespace TestDDLCMod
                 {
                     "renpy.ast.Style", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         // style_name, parent, properties, clear, take, delattr, variant
                         var name = stmt.Fields["style_name"];
                         Dictionary<string, string> properties = new Dictionary<string, string>();
@@ -248,7 +248,7 @@ namespace TestDDLCMod
                 {
                     "renpy.ast.Default", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         var store = ExtractStore(stmt);
                         if (!Defaults.ContainsKey(store))
                         {
@@ -264,7 +264,7 @@ namespace TestDDLCMod
                 {
                     "renpy.ast.Python", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         var store = ExtractStore(stmt);
                         if (store != "")
                         {
@@ -297,7 +297,7 @@ namespace TestDDLCMod
                 {
                     "renpy.ast.EarlyPython", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         var store = ExtractStore(stmt);
                         if (store != "")
                         {
@@ -313,17 +313,17 @@ namespace TestDDLCMod
                 {
                     "renpy.ast.Return", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         Log("return");
                     }
                 },
                 {
                     "renpy.ast.While", stmt =>
                     {
-                        handlers["renpy.ast.Node"](stmt);
+                        dumpers["renpy.ast.Node"](stmt);
                         var condition = ExtractPyExpr(stmt.Fields["condition"]);
                         Log("while " + condition + ":");
-                        HandleBlock(stmt);
+                        DumpBlock(stmt);
                     }
                 }
             };

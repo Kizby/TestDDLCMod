@@ -59,25 +59,24 @@ namespace TestDDLCMod
             var script = context.script;
             var blocks = script.Blocks;
             var rawBlocks = GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
-            var rawBlockEntryPoints = GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
-            var keys = new string[rawBlocks.Count];
-            rawBlocks.Keys.CopyTo(keys, 0);
-            lineNumber = 0;
-            foreach (var Key in keys)
+            if (DumpBlocks)
             {
-                if (rawBlocks.ContainsKey(Key))
+                var rawBlockEntryPoints = GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
+                lineNumber = 0;
+                foreach (var entry in rawBlocks)
                 {
-                    RenpyBlock block = rawBlocks[Key];
-                    BlockEntryPoint entryPoint = rawBlockEntryPoints[Key];
-
-                    //rawBlocks.Remove(Key);
-                    //rawBlocks.Add(labelEntry.Key, BuildBlock(labelEntry.Key, labelEntry.Value));
-
-                    if (DumpBlocks)
-                    {
-                        DumpBlock(Key, block, entryPoint);
-                    }
+                    BlockEntryPoint entryPoint = rawBlockEntryPoints[entry.Key];
+                    DumpBlock(entry.Key, entry.Value, entryPoint);
                 }
+            }
+
+            foreach (var entry in Mod.ActiveMod.Labels)
+            {
+                if (rawBlocks.ContainsKey(entry.Key))
+                {
+                    rawBlocks.Remove(entry.Key);
+                }
+                rawBlocks.Add(entry.Key, BuildBlock(entry.Key, entry.Value));
             }
         }
 
@@ -524,15 +523,45 @@ namespace TestDDLCMod
             var result = new RenpyBlock(name);
             foreach (var statement in block.Fields["block"].List)
             {
-                result.Contents.Add(BuildLine(statement));
+                ParseStatement(statement, result.Contents);
             }
-
-
+            foreach (var statement in block.Fields["block"].List)
+            {
+                FinalizeStatement(statement, result.Contents);
+            }
             return result;
         }
 
         static HashSet<string> seenNames = new HashSet<string>();
-        static Line BuildLine(PythonObj statement)
+        static Line ParseStatement(PythonObj statement, List<Line> container)
+        {
+            switch (statement.Name)
+            {
+                case "renpy.ast.While":
+                case "renpy.ast.Return":
+                case "renpy.ast.Python":
+                case "renpy.ast.If":
+                case "renpy.ast.Translate":
+                case "renpy.ast.EndTranslate":
+                case "renpy.ast.Call":
+                case "renpy.ast.Pass":
+                case "renpy.ast.UserStatement":
+                case "renpy.ast.Show":
+                case "renpy.ast.Hide":
+                case "renpy.ast.ShowLayer":
+                case "renpy.ast.Scene":
+                case "renpy.ast.With":
+                case "renpy.ast.Jump":
+                case "renpy.ast.Label":
+                default:
+                    if (seenNames.Add(statement.Name))
+                    {
+                        Debug.Log("Need to implement " + statement.Name);
+                    }
+                    return null;
+            }
+        }
+        static Line FinalizeStatement(PythonObj statement, List<Line> container)
         {
             switch (statement.Name)
             {
