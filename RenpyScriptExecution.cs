@@ -56,8 +56,8 @@ namespace TestDDLCMod
             }
             var script = context.script;
             var blocks = script.Blocks;
-            var rawBlocks = typeof(Blocks).GetField("blocks", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(blocks) as Dictionary<string, RenpyBlock>;
-            var rawBlockEntryPoints = typeof(Blocks).GetField("blockEntryPoints", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(blocks) as Dictionary<string, BlockEntryPoint>;
+            var rawBlocks = GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
+            var rawBlockEntryPoints = GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
             var keys = new string[rawBlocks.Count];
             rawBlocks.Keys.CopyTo(keys, 0);
             lineNumber = 0;
@@ -152,28 +152,11 @@ namespace TestDDLCMod
                                         break;
                                     case "label":
                                         label = renpyLabelEntryPoint.entryPoint.label;
-                                        if (renpyLabelEntryPoint.entryPoint.callParameters.Length == 0)
-                                        {
-                                            Log(label + ":");
-                                        } else
+                                        Log(label + ":");
+                                        if (renpyLabelEntryPoint.entryPoint.callParameters.Length > 0)
                                         {
                                             hasParameters = true;
-                                            Log(label + "():");
-                                            AddDepth();
-                                            foreach (var parameter in renpyLabelEntryPoint.entryPoint.callParameters)
-                                            {
-                                                if (parameter.expression == null)
-                                                {
-                                                    Log(parameter.name);
-                                                }
-                                                else
-                                                {
-                                                    Log(parameter.name + ":");
-                                                    LogExpression(parameter.expression);
-                                                }
-                                                ++lineNumber;
-                                            }
-                                            SubDepth();
+                                            LogParameters(renpyLabelEntryPoint.entryPoint.callParameters);
                                         }
                                         break;
                                     default:
@@ -195,39 +178,139 @@ namespace TestDDLCMod
                                 if (!hasParameters && renpyLabelEntryPoint.entryPoint.callParameters.Length != 0)
                                 {
                                     Log("Weird callParameters:");
-                                    AddDepth();
-                                    foreach (var parameter in renpyLabelEntryPoint.entryPoint.callParameters)
+                                    LogParameters(renpyLabelEntryPoint.entryPoint.callParameters);
+                                }
+                                break;
+                            case RenpyShow renpyShow:
+                                var show = renpyShow.show;
+                                var toLog = "show";
+                                if (show.IsStringCall)
+                                {
+                                    toLog += " expression:";
+                                    Log(toLog);
+                                    toLog = "";
+                                    LogExpression(show.StringCall);
+                                }
+                                else if (show.IsLayer)
+                                {
+                                    toLog += " layer " + show.Layer;
+                                }
+                                else
+                                {
+                                    toLog += " " + show.AssetName;
+                                }
+                                if (show.As != "")
+                                {
+                                    toLog += " as " + show.As;
+                                }
+                                var transform = show.TransformName;
+                                if (transform == "" && show.IsLayer)
+                                {
+                                    transform = "resetlayer";
+                                }
+                                if (transform != "")
+                                {
+                                    toLog += " at " + show.TransformName;
+                                    if (show.TransformCallParameters.Length > 0)
                                     {
-                                        if (parameter.expression == null)
-                                        {
-                                            Log(parameter.name);
-                                        }
-                                        else
-                                        {
-                                            Log(parameter.name + ":");
-                                            LogExpression(parameter.expression);
-                                        }
-                                        ++lineNumber;
+                                        toLog += ":";
+                                        Log(toLog);
+                                        toLog = "";
+                                        LogParameters(show.TransformCallParameters);
                                     }
-                                    SubDepth();
-                                }                                
+                                }
+                                else if (show.TransformCallParameters.Length > 0)
+                                {
+                                    Debug.Log("Why does show statement without transform have parameters?");
+                                    LogParameters(show.TransformCallParameters);
+                                }
+                                if (show.HasBehind)
+                                {
+                                    toLog += " behind " + show.Behind;
+                                }
+                                toLog += " onlayer " + show.Layer;
+                                if (show.HasZOrder)
+                                {
+                                    toLog += " zorder " + show.ZOrder;
+                                }
+                                Log(toLog);
+                                break;
+                            case RenpyWith renpyWith:
+                                Log("with:");
+                                LogExpression(renpyWith.With);
+                                break;
+                            case RenpyStandardProxyLib.Text text:
+                                Log("text:");
+                                LogParameters(text.CallParameters);
+                                break;
+                            case RenpyHide renpyHide:
+                                var hide = renpyHide.hide;
+                                if (hide.IsScreen)
+                                {
+                                    Log("hide screen " + hide.Name);
+                                }
+                                else
+                                {
+                                    Log("hide " + hide.Name);
+                                }
+                                break;
+                            case RenpyOneLinePython renpyOneLinePython:
+                                var oneLinePython = GetPrivateField<RenpyOneLinePython, OneLinePython>(renpyOneLinePython, "m_OneLinePython");
+                                Log("$");
+                                LogExpression(oneLinePython.compiledExpression);
+                                break;
+                            case RenpyInlinePython renpyInlinePython:
+                                var inlinePython = GetPrivateField<RenpyInlinePython, InLinePython>(renpyInlinePython, "m_InlinePython");
+                                Log("python " + inlinePython.functionName);
+                                break;
+                            case RenpyTime renpyTime:
+                                Log("time:");
+                                LogExpression(renpyTime.expression);
+                                break;
+                            case RenpyScene renpyScene:
+                                var scene = renpyScene.scene;
+                                toLog = "scene";
+                                if (scene.HasLayer)
+                                {
+                                    toLog += " " + scene.Layer;
+                                }
+                                toLog += " " + scene.Image;
+                                Log(toLog);
+                                break;
+                            case RenpyPlay renpyPlay:
+                                var play = renpyPlay.play;
+                                toLog = "play";
+                                toLog += " " + play.Channel;
+                                toLog += " '" + play.Asset + "'";
+                                if (play.fadeout != 0)
+                                {
+                                    toLog += " fadeout " + play.fadeout;
+                                }
+                                if (play.fadein != 0)
+                                {
+                                    toLog += " fadein " + play.fadein;
+                                }
+                                Log(toLog);
+                                break;
+                            case RenpyUnlock renpyUnlock:
+                                var unlock = renpyUnlock.unlock;
+                                toLog = "unlock";
+                                toLog += " " + unlock.UnlockName;
+                                if (unlock.UnlockType == UnlockInfo.UnlockType.Normal)
+                                {
+                                    toLog += " " + unlock.UnlockId;
+                                } else
+                                {
+                                    toLog += " " + unlock.UnlockType;
+                                }
+                                Log(toLog);
                                 break;
                             case RenpyFunction renpyFunction:
-                            case RenpyHide renpyHide:
-                            case RenpyInlinePython renpyInlinePython:
                             case RenpyMenuInput renpyMenuInput:
-                            case RenpyOneLinePython renpyOneLinePython:
-                            case RenpyPlay renpyPlay:
                             case RenpyQueue renpyQueue:
-                            case RenpyScene renpyScene:
                             case RenpySetRandomRange renpySetRandomRange:
-                            case RenpyShow renpyShow:
                             case RenpyStop renpyStop:
-                            case RenpyTime renpyTime:
-                            case RenpyUnlock renpyUnlock:
                             case RenpyWindow renpyWindow:
-                            case RenpyWith renpyWith:
-                            case RenpyStandardProxyLib.Text text:
                             case RenpyStandardProxyLib.WindowAuto windowAuto:
                             case RenpyStandardProxyLib.WaitForScreen waitForScreen:
                                 Log("Need to handle " + line.GetType());
@@ -253,6 +336,30 @@ namespace TestDDLCMod
             }
         }
 
+        private static U GetPrivateField<T, U>(T obj, string field) where T : class where U : class
+        {
+            return typeof(T).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(obj) as U;
+        }
+
+        private static void LogParameters(IEnumerable<RenpyCallParameter> parameters)
+        {
+            AddDepth();
+            foreach (var parameter in parameters)
+            {
+                if (parameter.expression == null)
+                {
+                    Log(parameter.name);
+                }
+                else
+                {
+                    Log(parameter.name + ":");
+                    LogExpression(parameter.expression);
+                }
+                ++lineNumber;
+            }
+            SubDepth();
+        }
+
         private static void LogExpression(CompiledExpression expression)
         {
             AddDepth();
@@ -265,12 +372,14 @@ namespace TestDDLCMod
                         break;
                     case InstructionType.LoadVariable:
                     case InstructionType.FunctionCall:
-                    case InstructionType.LoadString:
                     case InstructionType.LoadAttribute:
                     case InstructionType.MethodCall:
                     case InstructionType.SetVariable:
                     case InstructionType.SetAttribute:
                         Log(instruction.type.ToString() + " " + expression.constantStrings[instruction.argumentIndex]);
+                        break;
+                    case InstructionType.LoadString:
+                        Log(instruction.type.ToString() + " '" + Indent(expression.constantStrings[instruction.argumentIndex]) + "'");
                         break;
                     case InstructionType.LoadObject:
                         Log(instruction.type.ToString() + " " + expression.constantObjects[instruction.argumentIndex].ToString());
