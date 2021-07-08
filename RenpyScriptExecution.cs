@@ -305,21 +305,71 @@ namespace TestDDLCMod
                                 }
                                 Log(toLog);
                                 break;
+                            case RenpyStandardProxyLib.WindowAuto windowAuto:
+                                Log("window auto " + (windowAuto.show ? "show" : "hide"));
+                                break;
+                            case RenpyStandardProxyLib.WaitForScreen waitForScreen:
+                                Log("wait for screen " + waitForScreen.screen);
+                                break;
+                            case RenpySetRandomRange renpySetRandomRange:
+                                Log("$ randrangevalue = renpy.random.randint(0, " + (renpySetRandomRange.Range - 1) + ")");
+                                break;
                             case RenpyFunction renpyFunction:
                             case RenpyMenuInput renpyMenuInput:
                             case RenpyQueue renpyQueue:
-                            case RenpySetRandomRange renpySetRandomRange:
                             case RenpyStop renpyStop:
                             case RenpyWindow renpyWindow:
-                            case RenpyStandardProxyLib.WindowAuto windowAuto:
-                            case RenpyStandardProxyLib.WaitForScreen waitForScreen:
                                 Log("Need to handle " + line.GetType());
                                 break;
                             default:
                                 switch (line.GetType().ToString())
                                 {
                                     case "RenpyParser.RenpyDialogueLine":
-                                        Log("Need to handle " + line.GetType());
+                                        var dialogueLine = line.GetType().GetField("m_DialogueLine", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(line) as DialogueLine;
+                                        if (dialogueLine.CommandType != "say")
+                                        {
+                                            Log("dialogueLine.CommandType: " + dialogueLine.CommandType);
+                                        }
+                                        if (dialogueLine.HasCps)
+                                        {
+                                            Log("dialogueLine.Cps: " + dialogueLine.Cps);
+                                            Log("dialogueLine.CpsEndIndex: " + dialogueLine.CpsEndIndex);
+                                            Log("dialogueLine.CpsStartIndex: " + dialogueLine.CpsStartIndex);
+                                        }
+                                        if (dialogueLine.DeveloperCommentary)
+                                        {
+                                            Log("dialogueLine.DeveloperCommentary");
+                                        }
+                                        if (dialogueLine.ImmediateUntil != 0)
+                                        {
+                                            Log("dialogueLine.ImmediateUntil: " + dialogueLine.ImmediateUntil);
+                                        }
+                                        if (dialogueLine.IsCpsMultiplier)
+                                        {
+                                            Log("dialogueLine.IsCpsMultiplier");
+                                        }
+                                        if (dialogueLine.Label != Key)
+                                        {
+                                            Log("dialogueLine.Label: " + dialogueLine.Label);
+                                        }
+                                        if (dialogueLine.SkipWait)
+                                        {
+                                            Log("dialogueLine.SkipWait");
+                                        }
+                                        if (dialogueLine.WaitIndicesAndTimes.Count > 0)
+                                        {
+                                            Log("dialogueLine.WaitIndicesAndTimes: " + dialogueLine.WaitIndicesAndTimes.Join(t => "(" + t.Item1 + ", " + t.Item2 + ")"));
+                                        }
+                                        toLog = "\"" + Renpy.Text.GetLocalisedString(dialogueLine.TextID, label: dialogueLine.Label) + "\"";
+                                        if (dialogueLine.Variant != "")
+                                        {
+                                            toLog = dialogueLine.Variant + " " + toLog;
+                                        }
+                                        if (dialogueLine.Tag != "")
+                                        {
+                                            toLog = dialogueLine.Tag + " " + toLog;
+                                        }
+                                        Log(toLog);
                                         break;
                                     default:
                                         Log("Unrecognized line type: " + line.GetType());
