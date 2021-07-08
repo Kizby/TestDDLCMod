@@ -60,6 +60,7 @@ namespace TestDDLCMod
             var rawBlockEntryPoints = typeof(Blocks).GetField("blockEntryPoints", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(blocks) as Dictionary<string, BlockEntryPoint>;
             var keys = new string[rawBlocks.Count];
             rawBlocks.Keys.CopyTo(keys, 0);
+            lineNumber = 0;
             foreach (var Key in keys)
             {
                 if (rawBlocks.ContainsKey(Key))
@@ -139,26 +140,77 @@ namespace TestDDLCMod
                                 LogExpression(expression.Expr);
                                 break;
                             case RenpyLabelEntryPoint renpyLabelEntryPoint:
-                                Log("nested: " + renpyLabelEntryPoint.NestedLabelData);
-                                Log("rootLabel: " + renpyLabelEntryPoint.entryPoint.rootLabel);
-                                Log("label: " + renpyLabelEntryPoint.entryPoint.label);
-                                Log("startIndex: " + renpyLabelEntryPoint.entryPoint.startIndex);
-                                Log("parameters:");
-                                AddDepth();
-                                foreach (var parameter in renpyLabelEntryPoint.entryPoint.callParameters)
+                                var data = renpyLabelEntryPoint.NestedLabelData;
+                                var name = data.Substring(0, data.IndexOf(" "));
+                                var label = data.Substring(data.IndexOf(" ") + 1);
+                                var hasParameters = false;
+                                switch (name)
                                 {
-                                    if (parameter.expression == null)
-                                    {
-                                        Log(parameter.name);
-                                    }
-                                    else
-                                    {
-                                        Log(parameter.name + ":");
-                                        LogExpression(parameter.expression);
-                                    }
-                                    ++lineNumber;
+                                    case "contains":
+                                    case "block":
+                                        Log(name + ":");
+                                        break;
+                                    case "label":
+                                        label = renpyLabelEntryPoint.entryPoint.label;
+                                        if (renpyLabelEntryPoint.entryPoint.callParameters.Length == 0)
+                                        {
+                                            Log(label + ":");
+                                        } else
+                                        {
+                                            hasParameters = true;
+                                            Log(label + "():");
+                                            AddDepth();
+                                            foreach (var parameter in renpyLabelEntryPoint.entryPoint.callParameters)
+                                            {
+                                                if (parameter.expression == null)
+                                                {
+                                                    Log(parameter.name);
+                                                }
+                                                else
+                                                {
+                                                    Log(parameter.name + ":");
+                                                    LogExpression(parameter.expression);
+                                                }
+                                                ++lineNumber;
+                                            }
+                                            SubDepth();
+                                        }
+                                        break;
+                                    default:
+                                        Log("Unrecognized nestedLabelData: " + data);
+                                        break;
                                 }
-                                SubDepth();
+                                if (renpyLabelEntryPoint.entryPoint.rootLabel != Key)
+                                {
+                                    Log("Weird rootLabel: " + renpyLabelEntryPoint.entryPoint.rootLabel);
+                                }
+                                if (renpyLabelEntryPoint.entryPoint.label != label)
+                                {
+                                    Log("Weird label: " + label + " vs " + renpyLabelEntryPoint.entryPoint.label);
+                                }
+                                if (renpyLabelEntryPoint.entryPoint.startIndex != lineNumber)
+                                {
+                                    Log("Weird startIndex:" + renpyLabelEntryPoint.entryPoint.startIndex);
+                                }
+                                if (!hasParameters && renpyLabelEntryPoint.entryPoint.callParameters.Length != 0)
+                                {
+                                    Log("Weird callParameters:");
+                                    AddDepth();
+                                    foreach (var parameter in renpyLabelEntryPoint.entryPoint.callParameters)
+                                    {
+                                        if (parameter.expression == null)
+                                        {
+                                            Log(parameter.name);
+                                        }
+                                        else
+                                        {
+                                            Log(parameter.name + ":");
+                                            LogExpression(parameter.expression);
+                                        }
+                                        ++lineNumber;
+                                    }
+                                    SubDepth();
+                                }                                
                                 break;
                             case RenpyFunction renpyFunction:
                             case RenpyHide renpyHide:
