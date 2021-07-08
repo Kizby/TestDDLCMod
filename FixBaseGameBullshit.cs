@@ -1,6 +1,7 @@
 ﻿using HarmonyLib;
 using RenpyLauncher;
 using RenpyParser;
+using RenPyParser.VGPrompter.DataHolders;
 using SimpleExpressionEngine;
 using System;
 using System.Collections.Generic;
@@ -100,6 +101,32 @@ namespace TestDDLCMod
         static void Postfix(Tokenizer __instance)
         {
             //Debug.Log("Token: " + __instance.Token);
+        }
+    }
+
+    [HarmonyPatch(typeof(RenpyExecutionContext), "Jump")]
+    public static class LogJumps
+    {
+        static void Prefix(string label)
+        {
+            Debug.Log("Jumping to: " + label);
+        }
+    }
+    [HarmonyPatch(typeof(RenpyCallstack), "PushBlock")]
+    public static class LogGotos
+    {
+        static void Prefix(RenpyBlock block)
+        {
+            Debug.Log("Goto: " + block.Label);
+        }
+    }
+
+    [HarmonyPatch(typeof(RenpyCallstack), "Next")]
+    public static class LogLines
+    {
+        static void Postfix(Line __result)
+        {
+            Debug.Log("Line: " + __result.ToString());
         }
     }
 }

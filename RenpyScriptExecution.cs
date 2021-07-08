@@ -5,6 +5,7 @@ using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using RenPyParser.VGPrompter.Script.Internal;
 using SimpleExpressionEngine;
+using Parser = SimpleExpressionEngine.Parser;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -60,9 +61,9 @@ namespace TestDDLCMod
             var script = context.script;
             var blocks = script.Blocks;
             var rawBlocks = GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
+            var rawBlockEntryPoints = GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
             if (DumpBlocks)
             {
-                var rawBlockEntryPoints = GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
                 lineNumber = 0;
                 foreach (var entry in rawBlocks)
                 {
@@ -76,8 +77,26 @@ namespace TestDDLCMod
                 if (rawBlocks.ContainsKey(entry.Key))
                 {
                     rawBlocks.Remove(entry.Key);
+                    rawBlockEntryPoints.Remove(entry.Key);
                 }
-                rawBlocks.Add(entry.Key, BuildBlock(entry.Key, entry.Value));
+                var newBlock = BuildBlock(entry.Key, entry.Value);
+                if (entry.Key == "splashscreen")
+                {
+                    newBlock.callParameters = new RenpyCallParameter[0];
+                }
+                rawBlocks.Add(entry.Key, newBlock);
+                rawBlockEntryPoints.Add(entry.Key, new BlockEntryPoint(entry.Key));
+            }
+
+            Debug.Log("Unparseable python:");
+            foreach (var entry in unparseablePython)
+            {
+                Debug.Log(Indent(entry.Item1));
+                Debug.Log("||||||||||||||||");
+                Debug.Log(Indent(entry.Item2.Message));
+                Debug.Log("||||||||||||||||");
+                Debug.Log(Indent(entry.Item2.StackTrace));
+                Debug.Log("----------------");
             }
         }
 
@@ -546,7 +565,7 @@ namespace TestDDLCMod
             {
                 case "renpy.ast.While":
                     var conditionString = ExtractPyExpr(obj.Fields["condition"]);
-                    var condition = SimpleExpressionEngine.Parser.Compile(conditionString);
+                    var condition = Parser.Compile(conditionString);
                     condition.AddInstruction(InstructionType.Not); // since this is a goto unless, we need to negate the condition
                     var gotoStmt = new RenpyGoToLineUnless(conditionString, -1);
                     gotoStmt.CompiledExpression = condition;
@@ -577,6 +596,33 @@ namespace TestDDLCMod
                     }
                     break;
                 case "renpy.ast.If":
+                    var entries = obj.Fields["entries"].List;
+                    var afterIf = new RenpyNOP();
+                    RenpyGoToLineUnless lastGoto = null;
+                    foreach (var entry in entries)
+                    {
+                        conditionString = ExtractPyExpr(entry.Tuple[0]);
+                        condition = Parser.Compile(conditionString);
+                        gotoStmt = new RenpyGoToLineUnless(conditionString, -1);
+                        gotoStmt.CompiledExpression = condition;
+                        container.Add(gotoStmt);
+                        if (lastGoto != null)
+                        {
+                            jumpMap.Add(lastGoto, gotoStmt);
+                        }
+                        lastGoto = gotoStmt;
+
+                        foreach (var stmt in  entry.Tuple[1].List)
+                        {
+                            ParsePythonObj(stmt, container);
+                        }
+
+                        var hardGoto = new RenpyGoToLine(-1);
+                        jumpMap.Add(hardGoto, afterIf);
+                    }
+                    jumpMap.Add(lastGoto, afterIf);
+                    container.Add(afterIf);
+                    break;
                 case "renpy.ast.Translate":
                 case "renpy.ast.EndTranslate":
                 case "renpy.ast.Call":
@@ -601,6 +647,9 @@ namespace TestDDLCMod
         {
             switch (line)
             {
+                case RenpyGoToLine goToLine:
+                    goToLine.TargetLine = container.IndexOf(jumpMap[goToLine]);
+                    break;
                 case RenpyGoToLineUnless goToLineUnless:
                     goToLineUnless.TargetLine = container.IndexOf(jumpMap[goToLineUnless]);
                     break;
@@ -608,6 +657,10 @@ namespace TestDDLCMod
         }
         private static string ExtractPyExpr(PythonObj expr)
         {
+            if (expr.Type == PythonObj.ObjType.STRING)
+            {
+                return expr.String;
+            }
             if (expr.Name == "renpy.ast.PyExpr")
             {
                 return expr.Args.Tuple[0].String;
@@ -615,13 +668,9 @@ namespace TestDDLCMod
             else if (expr.Name == "renpy.ast.PyCode")
             {
                 var source = expr.Fields["source"];
-                if (source.Type == PythonObj.ObjType.STRING)
-                {
-                    return source.String;
-                }
                 return ExtractPyExpr(expr.Fields["source"]);
             }
-            Debug.LogError("Trying to extractPyExpr on a " + expr.Name);
+            Debug.LogError("Trying to extractPyExpr on a " + expr.Type);
             return "";
         }
     }
