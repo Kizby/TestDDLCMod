@@ -7,6 +7,7 @@ using RenPyParser.VGPrompter.Script.Internal;
 using SimpleExpressionEngine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using Parser = SimpleExpressionEngine.Parser;
@@ -23,7 +24,7 @@ namespace TestDDLCMod
             MaybeModContext(__instance, ____executionContext);
         }
 
-        private static bool DumpBlocks = false;
+        private static bool DumpBlocks = true;
 
         private static int depth = "[Info   : Unity Log] ".Length;
         private static int lineNumber = 0;
@@ -564,6 +565,7 @@ namespace TestDDLCMod
         private static List<Tuple<string, SyntaxException>> unparseablePython = new List<Tuple<string, SyntaxException>>();
         private static void ParsePythonObj(PythonObj obj, List<Line> container, string label)
         {
+            //Debug.Log("Parsing " + obj.Name);
             switch (obj.Name)
             {
                 case "renpy.ast.While":
@@ -652,32 +654,231 @@ namespace TestDDLCMod
                     container.Add(afterIf);
                     break;
                 case "renpy.ast.Scene":
-                    if (obj.Fields["layer"].Type != PythonObj.ObjType.NONE)
+                    ValidateObj(obj, new Dictionary<string, Predicate<PythonObj>>() {
+                        { "layer", i => i.Type == PythonObj.ObjType.NONE},
+                        { "atl", i => i.Type == PythonObj.ObjType.NONE},
+                    });
+                    ValidateTuple(obj, "imspec", new List<Predicate<PythonObj>>()
                     {
-                        Debug.Log("Need to handle a scene layer of type: " + obj.Fields["layer"].Type);
-                    }
-                    if (obj.Fields["atl"].Type != PythonObj.ObjType.NONE)
-                    {
-                        Debug.Log("Need to handle a scene atl of type: " + obj.Fields["atl"].Type);
-                    }
+                        i => i.Type == PythonObj.ObjType.TUPLE && i.Tuple.Count < 3 && i.Tuple.TrueForAll(j => j.Type == PythonObj.ObjType.STRING),
+                        i => i.Type == PythonObj.ObjType.NONE,
+                        i => i.Type == PythonObj.ObjType.NONE,
+                        i => i.Type == PythonObj.ObjType.LIST && i.List.Count == 0,
+                        i => i.Type == PythonObj.ObjType.NONE,
+                        i => i.Type == PythonObj.ObjType.NONE,
+                        i => i.Type == PythonObj.ObjType.LIST && i.List.Count == 0,
+                    });
                     var imspec = obj.Fields["imspec"].Tuple;
                     var args = imspec[0].Tuple;
-                    if (imspec[1].Type != PythonObj.ObjType.NONE ||
-                        imspec[2].Type != PythonObj.ObjType.NONE ||
-                        imspec[3].Type != PythonObj.ObjType.LIST || imspec[3].List.Count > 0 ||
-                        imspec[4].Type != PythonObj.ObjType.NONE ||
-                        imspec[5].Type != PythonObj.ObjType.NONE ||
-                        imspec[6].Type != PythonObj.ObjType.LIST || imspec[6].List.Count > 0)
-                    {
-                        Debug.Log("Weird scene imspec: " + imspec);
-                    }
                     container.Add(new RenpyScene("scene " + args.Join(a => a.String, " ")));
+                    break;
+                case "renpy.ast.UserStatement":
+                    ValidateObj(obj, new Dictionary<string, Predicate<PythonObj>>()
+                    {
+                        { "block", i => i.List.Count == 0},
+                        { "parsed", i => i.Type == PythonObj.ObjType.NONE },
+                        { "line", i => i.Type == PythonObj.ObjType.STRING },
+                        { "translatable", i => !i.Bool },
+                    });
+                    var line = obj.Fields["line"].String;
+                    var lineArgs = line.Split(' ');
+                    var valid = true;
+                    switch (lineArgs[0])
+                    {
+                        case "pause":
+                            container.Add(new RenpyPause(line, Parser.Compile(line.Substring(line.IndexOf(' ') + 1))));
+                            break;
+                        case "play":
+                            var renpyPlay = new RenpyPlay();
+                            renpyPlay.play = new Play();
+                            if (lineArgs[1].ToLower() == "music")
+                            {
+                                renpyPlay.play.Channel = Channel.Music;
+                            }
+                            else if (lineArgs[1].ToLower() == "sound")
+                            {
+                                renpyPlay.play.Channel = Channel.Sound;
+                            }
+                            else if (lineArgs[1].ToLower() == "musicpoem")
+                            {
+                                renpyPlay.play.Channel = Channel.MusicPoem;
+                            }
+                            else
+                            {
+                                Debug.LogWarning("Weird channel: " + lineArgs[1]);
+                                renpyPlay.play.Channel = Channel.Sound + 1;
+                                valid = false;
+                                break;
+                            }
+
+                            var asset = lineArgs[2];
+                            if (asset.StartsWith("\"") && asset.Substring(1).Contains("\"") ||
+                                asset.StartsWith("'") && asset.Substring(1).Contains("'"))
+                            {
+                                var quoteIndex = lineArgs[0].Length + 1 + lineArgs[1].Length + 1;
+                                var quoteChar = line[quoteIndex];
+                                if (!"\"'".Contains("" + quoteChar))
+                                {
+                                    Debug.LogWarning("Screwed up indices, char " + quoteIndex + " should be a quote in: " + line);
+                                }
+                                asset = line.Substring(quoteIndex + 1, line.Substring(quoteIndex + 1).IndexOf(quoteChar));
+                                if (asset.Contains(" "))
+                                {
+                                    // blech, need to fix up lineArgs
+                                    var offset = asset.Count(c => c == ' ');
+                                    var newLineArgs = new string[lineArgs.Length - offset];
+                                    for (var i = 0; i + offset < lineArgs.Length; ++i)
+                                    {
+                                        newLineArgs[i] = lineArgs[i + (i < 3 ? 0 : offset)];
+                                    }
+                                    lineArgs = newLineArgs;
+                                }
+                            }
+                            renpyPlay.play.Asset = asset;
+                            if (lineArgs.Length > 3)
+                            {
+                                for (var i = 3; i < lineArgs.Length; ++i)
+                                {
+                                    switch (lineArgs[i])
+                                    {
+                                        case "fadein": renpyPlay.play.fadein = float.Parse(lineArgs[++i]); break;
+                                        case "fadeout": renpyPlay.play.fadeout = float.Parse(lineArgs[++i]); break;
+                                        case "noloop":
+                                        case "loop":
+                                            // ignoring these for now
+                                            break;
+                                        default: Debug.LogWarning("Weird option in play: " + line); break;
+                                    }
+                                }
+                            }
+                            if (!valid)
+                            {
+                                goto default;
+                            }
+                            container.Add(renpyPlay);
+                            break;
+                        case "stop":
+                            var renpyStop = new RenpyStop();
+                            renpyStop.stop = new Stop();
+                            if (lineArgs[1].ToLower() == "music")
+                            {
+                                renpyStop.stop.Channel = Channel.Music;
+                            }
+                            else if (lineArgs[1].ToLower() == "sound")
+                            {
+                                renpyStop.stop.Channel = Channel.Sound;
+                            }
+                            else if (lineArgs[1].ToLower() == "musicpoem")
+                            {
+                                renpyStop.stop.Channel = Channel.MusicPoem;
+                            }
+                            else
+                            {
+                                Debug.LogWarning("Weird channel: " + lineArgs[1]);
+                                renpyStop.stop.Channel = Channel.Sound + 1;
+                                valid = false;
+                                break;
+                            }
+
+                            if (lineArgs.Length > 2)
+                            {
+                                if (lineArgs[2] == "fadeout")
+                                {
+                                    renpyStop.stop.fadeout = float.Parse(lineArgs[3]);
+                                }
+                                else
+                                {
+                                    Debug.LogWarning("Weird option in stop: " + line);
+                                }
+                            }
+                            if (!valid)
+                            {
+                                goto default;
+                            }
+                            container.Add(renpyStop);
+                            break;
+                        case "show":
+                            if (lineArgs[1] == "screen")
+                            {
+                                // compiled expression ends with "FunctionCall tear" or similar
+                                // need to replace that with "FunctionCall _screen_tear" to use the new logic
+                                var expression = Parser.Compile(line.Substring(line.IndexOf("show screen ") + "show screen ".Length));
+                                var instructions = expression.instructions;
+                                var call = instructions[instructions.Count - 1];
+                                var callName = expression.constantStrings[call.argumentIndex];
+                                var newCallName = "_screen_" + callName;
+                                call.argumentIndex = expression.constantStrings.Count;
+                                expression.constantStrings.Add(newCallName);
+                                container.Add(new RenpyStandardProxyLib.Expression(expression, true));
+                                break;
+                            }
+                            var renpyShow = new RenpyShow(line);
+                            var show = renpyShow.show;
+                            var index = 1;
+
+                            // not handling show expression rn
+                            /*
+                            if (show.As != "")
+                            {
+                                toLog += " as " + show.As;
+                            }
+                            var transform = show.TransformName;
+                            if (transform == "" && show.IsLayer)
+                            {
+                                transform = "resetlayer";
+                            }
+                            if (transform != "")
+                            {
+                                toLog += " at " + show.TransformName;
+                                if (show.TransformCallParameters.Length > 0)
+                                {
+                                    toLog += ":";
+                                    Log(toLog);
+                                    toLog = "";
+                                    LogParameters(show.TransformCallParameters);
+                                }
+                            }
+                            else if (show.TransformCallParameters.Length > 0)
+                            {
+                                Debug.Log("Why does show statement without transform have parameters?");
+                                LogParameters(show.TransformCallParameters);
+                            }
+                            if (show.HasBehind)
+                            {
+                                toLog += " behind " + show.Behind;
+                            }
+                            toLog += " onlayer " + show.Layer;
+                            if (show.HasZOrder)
+                            {
+                                toLog += " zorder " + show.ZOrder;
+                            }*/
+                            goto default;
+                        case "hide":
+                            var renpyHide = new RenpyHide();
+                            if (lineArgs[1] == "screen")
+                            {
+                                renpyHide.hide = new Hide(lineArgs[2], true);
+                            }
+                            else
+                            {
+                                renpyHide.hide = new Hide(lineArgs[1], false);
+                            }
+                            container.Add(renpyHide);
+                            goto default;
+                        default:
+                            Debug.Log("Need to handle userStatement line: " + line);
+                            valid = false;
+                            break;
+                    }
+                    if (!valid)
+                    {
+                        goto default;
+                    }
                     break;
                 case "renpy.ast.Translate":
                 case "renpy.ast.EndTranslate":
                 case "renpy.ast.Call":
                 case "renpy.ast.Pass":
-                case "renpy.ast.UserStatement":
                 case "renpy.ast.Show":
                 case "renpy.ast.Hide":
                 case "renpy.ast.ShowLayer":
@@ -722,6 +923,36 @@ namespace TestDDLCMod
             }
             Debug.LogError("Trying to extractPyExpr on a " + expr.Type);
             return "";
+        }
+
+        private static void ValidateObj(PythonObj obj, Dictionary<string, Predicate<PythonObj>> fields)
+        {
+            foreach (var field in fields)
+            {
+                if (!field.Value(obj.Fields[field.Key]))
+                {
+                    Debug.Log("Unexpected " + field.Key + " in " + obj.Name + ": " + obj.Fields[field.Key]);
+                }
+            }
+        }
+
+        private static void ValidateTuple(PythonObj obj, string field, List<Predicate<PythonObj>> elements)
+        {
+            var tuple = obj.Fields[field].Tuple;
+            // lambda since obj.ToString can be expensive
+            Func<string> context = () => " in " + obj.Name + "." + field + ": " + obj;
+            if (tuple.Count != elements.Count)
+            {
+                Debug.Log("Wrong tuple count (" + tuple.Count + " vs " + elements.Count + ")" + context());
+                return;
+            }
+            for (var i = 0; i < tuple.Count; ++i)
+            {
+                if (!elements[i](tuple[i]))
+                {
+                    Debug.Log("Unexpected element " + i + context());
+                }
+            }
         }
     }
 
