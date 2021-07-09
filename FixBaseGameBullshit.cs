@@ -126,7 +126,24 @@ namespace TestDDLCMod
     {
         static void Postfix(Line __result)
         {
-            Debug.Log("Line: " + __result.ToString());
+            Debug.Log("Line: " + __result?.ToString());
+        }
+    }
+
+    [HarmonyPatch(typeof(RenpyScript), "HandleInLinePython")]
+    public static class InspectInLinePython
+    {
+        static void Prefix(InLinePython InlinePython)
+        {
+            var methodInfo = typeof(DDLCMain_ProxyLib).GetMethod(InlinePython.functionName);
+            if (methodInfo == null)
+            {
+                Debug.Log("No InlinePython for method: " + InlinePython.functionName);
+            }
+            else
+            {
+                Debug.Log("Handling InlinePython for method: " + InlinePython.functionName);
+            }
         }
     }
 }

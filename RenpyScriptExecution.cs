@@ -5,11 +5,11 @@ using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using RenPyParser.VGPrompter.Script.Internal;
 using SimpleExpressionEngine;
-using Parser = SimpleExpressionEngine.Parser;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
+using Parser = SimpleExpressionEngine.Parser;
 
 namespace TestDDLCMod
 {
@@ -547,7 +547,7 @@ namespace TestDDLCMod
             var result = new RenpyBlock(name);
             foreach (var pythonObj in block.Fields["block"].List)
             {
-                ParsePythonObj(pythonObj, result.Contents);
+                ParsePythonObj(pythonObj, result.Contents, name);
             }
             foreach (var statement in result.Contents)
             {
@@ -559,7 +559,7 @@ namespace TestDDLCMod
         private static HashSet<string> seenNames = new HashSet<string>();
         private static Dictionary<Line, Line> jumpMap = new Dictionary<Line, Line>();
         private static List<Tuple<string, SyntaxException>> unparseablePython = new List<Tuple<string, SyntaxException>>();
-        private static void ParsePythonObj(PythonObj obj, List<Line> container)
+        private static void ParsePythonObj(PythonObj obj, List<Line> container, string label)
         {
             switch (obj.Name)
             {
@@ -573,7 +573,7 @@ namespace TestDDLCMod
 
                     foreach (var stmt in obj.Fields["block"].List)
                     {
-                        ParsePythonObj(stmt, container);
+                        ParsePythonObj(stmt, container, label);
                     }
 
                     var gotoTarget = new RenpyNOP();
@@ -585,15 +585,35 @@ namespace TestDDLCMod
                     break;
                 case "renpy.ast.Python":
                     var codeString = ExtractPyExpr(obj.Fields["code"]);
-                    try
+                    if (codeString.Contains("\n"))
                     {
-                        RenpyOneLinePython renpyOneLinePython = new RenpyOneLinePython("$" + codeString);
-                        container.Add(renpyOneLinePython);
+                        RenpyInlinePython renpyInlinePython = new RenpyInlinePython(codeString, label);
+                        InLinePython m_InlinePython = GetPrivateField<RenpyInlinePython, InLinePython>(renpyInlinePython, "m_InlinePython");
+                        if (m_InlinePython.hash == 2039296337)
+                        {
+                            // this is the default firstrun setting block
+                            // we use reset.sh instead of firstrun files now, so just go with DDLC+'s implementation
+                            m_InlinePython.hash = 318042419;
+                            m_InlinePython.functionName = "splashscreen_inlinepythonblock_318042419";
+                        }
+                        else if (m_InlinePython.hash == 1991019598)
+                        {
+                            // this is the default s_kill_early check
+                            // base game checks Renpy.Characters.Exists now, so let's do that instead
+                            m_InlinePython.hash = 85563775;
+                            m_InlinePython.functionName = "splashscreen_inlinepythonblock_85563775";
+                        }
+                        container.Add(renpyInlinePython);
                     }
-                    catch (SyntaxException e)
-                    {
-                        unparseablePython.Add(Tuple.Create(codeString, e));
-                    }
+                    else try
+                        {
+                            RenpyOneLinePython renpyOneLinePython = new RenpyOneLinePython("$" + codeString);
+                            container.Add(renpyOneLinePython);
+                        }
+                        catch (SyntaxException e)
+                        {
+                            unparseablePython.Add(Tuple.Create(codeString, e));
+                        }
                     break;
                 case "renpy.ast.If":
                     var entries = obj.Fields["entries"].List;
@@ -612,9 +632,9 @@ namespace TestDDLCMod
                         }
                         lastGoto = gotoStmt;
 
-                        foreach (var stmt in  entry.Tuple[1].List)
+                        foreach (var stmt in entry.Tuple[1].List)
                         {
-                            ParsePythonObj(stmt, container);
+                            ParsePythonObj(stmt, container, label);
                         }
 
                         var hardGoto = new RenpyGoToLine(-1);
