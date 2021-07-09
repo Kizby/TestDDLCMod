@@ -7,6 +7,7 @@ using RenPyParser.VGPrompter.Script.Internal;
 using SimpleExpressionEngine;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using UnityEngine;
@@ -59,6 +60,15 @@ namespace TestDDLCMod
             {
                 return;
             }
+
+            // some renpy built-in methods aren't meaningful anymore
+            CallStubber.StubCalls(context);
+
+            foreach (var earlyPython in Mod.ActiveMod.EarlyPython)
+            {
+                ExecutePython(earlyPython, context);
+            }
+
             var script = context.script;
             var blocks = script.Blocks;
             var rawBlocks = GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
@@ -70,6 +80,24 @@ namespace TestDDLCMod
                 {
                     BlockEntryPoint entryPoint = rawBlockEntryPoints[entry.Key];
                     DumpBlock(entry.Key, entry.Value, entryPoint);
+                }
+            }
+
+            foreach (var initBucket in Mod.ActiveMod.Inits)
+            {
+                foreach (var init in initBucket.Value)
+                {
+                    var initBlock = BuildBlock(init.Fields["block"], context);
+                    if (initBlock != null)
+                    {
+                        if (rawBlocks.ContainsKey(initBlock.Label))
+                        {
+                            rawBlocks.Remove(initBlock.Label);
+                            rawBlockEntryPoints.Remove(initBlock.Label);
+                        }
+                        rawBlocks.Add(initBlock.Label, initBlock);
+                        rawBlockEntryPoints.Add(initBlock.Label, new BlockEntryPoint(initBlock.Label));
+                    }
                 }
             }
 
@@ -99,6 +127,22 @@ namespace TestDDLCMod
                     Debug.Log("----------------");
                 }
             }
+        }
+
+        private static DataValue ExecutePython(PythonObj python, RenpyExecutionContext context)
+        {
+            var rawExpression = ExtractPyExpr(python.Fields["code"]);
+            try
+            {
+                var expression = new CompiledExpression();
+                Parser.Parse(new Tokenizer(new StringReader(rawExpression))).Compile(expression);
+                return ExpressionRuntime.Execute(expression, context);
+            }
+            catch (SyntaxException e)
+            {
+                unparseablePython.Add(Tuple.Create(rawExpression, e));
+            }
+            return new DataValue();
         }
 
         private static void DumpBlock(string Key, RenpyBlock block, BlockEntryPoint entryPoint)
@@ -543,6 +587,150 @@ namespace TestDDLCMod
             SubDepth();
         }
 
+        // for when the obj has one block field that we're building
+        private static RenpyBlock BuildBlock(PythonObj obj, RenpyExecutionContext context)
+        {
+            RenpyBlock block = null;
+            if (obj.List.Count > 1)
+            {
+                Debug.Log("Long block?");
+            }
+            obj = obj.List[0];
+            switch (obj.Name)
+            {
+                case "renpy.ast.Screen":
+                    obj = obj.Fields["screen"];
+                    if (obj.Name != "renpy.sl2.slast.SLScreen")
+                    {
+                        Debug.LogWarning("Unknown screen ast!");
+                        return null;
+                    }
+
+                    var screenName = "_screen_" + obj.Fields["name"].String;
+                    Debug.Log("Trying to build screen " + screenName);
+                    return null;
+                    block = new RenpyBlock(screenName);
+                    var rawParams = obj.Fields["parameters"].Fields["parameters"].List.Select(i => i.Tuple).ToList();
+                    block.callParameters = new RenpyCallParameter[rawParams.Count];
+                    for (var i = 0; i < block.callParameters.Length; ++i)
+                    {
+                        var paramName = rawParams[i][0].String;
+                        var paramValue = rawParams[i][1].Type == PythonObj.ObjType.NONE ? null : ExtractPyExpr(rawParams[i][1]);
+                        block.callParameters[i] = new RenpyCallParameter(paramName, paramValue);
+                    }
+
+                    bool modal = obj.Fields["modal"].Bool;
+                    int zorder = int.Parse(obj.Fields["zorder"].String);
+                    string layer = obj.Fields["layer"].String;
+                    Dictionary<string, string> keywords = new Dictionary<string, string>();
+                    foreach (var keyword in obj.Fields["keyword"].List)
+                    {
+                        keywords.Add(keyword.Tuple[0].String, ExtractPyExpr(keyword.Tuple[1]));
+                    }
+
+                    if (!ParseScreenNode(obj, keywords, block.Contents))
+                    {
+                        return null;
+                    }
+                    break;
+                case "renpy.ast.Python":
+                    // no labelled block, just some python to run
+                    ExecutePython(obj, context);
+                    break;
+                case "renpy.ast.Define":
+                case "renpy.ast.Default":
+                    var store = ExtractStore(obj);
+                    var name = obj.Fields["varname"].String;
+                    if (store != "")
+                    {
+                        context.AddScope(store);
+                        name = store + "." + name;
+                    }
+                    var value = ExecutePython(obj, context);
+                    switch (value.GetDataType())
+                    {
+                        case DataType.Float:
+                            context.SetVariableFloat(name, value.GetFloat());
+                            break;
+                        case DataType.String:
+                            context.SetVariableString(name, value.GetString());
+                            break;
+                        case DataType.ObjectRef:
+                            context.SetVariableObject(name, value.GetObject());
+                            break;
+                        case DataType.None:
+                            // umm, maybe?
+                            context.SetVariableFloat(name, 0);
+                            break;
+                        default:
+                            Debug.LogWarning("Failed to set " + name + " to: " + ExtractPyExpr(obj.Fields["code"]));
+                            break;
+                    }
+                    break;
+                case "renpy.ast.Style":
+                    Debug.Log("Trying to build style " + obj.Fields["style_name"].String);
+                    break;
+                case "renpy.ast.Transform":
+                    Debug.Log("Trying to build transform " + obj.Fields["varname"].String);
+                    break;
+                case "renpy.ast.Image":
+                    Debug.Log("Trying to build image " + obj.Fields["imgname"].Tuple[0].String);
+                    break;
+                default:
+                    Log("Need to handle single block of " + obj.Name);
+                    Log(obj.ToString());
+                    break;
+            }
+            return block;
+        }
+
+        private static bool ParseScreenNode(PythonObj obj, Dictionary<string, string> keywords, List<Line> container)
+        {
+            switch (obj.Name)
+            {
+                case "renpy.sl2.slast.SLDisplayable":
+                    ValidateObj(obj, new Dictionary<string, Predicate<PythonObj>>()
+                    {
+                        {"imagemap", i => i.Type == PythonObj.ObjType.BOOL && !i.Bool },
+                        {"scope", i => i.Type == PythonObj.ObjType.BOOL && i.Bool },
+                        {"child_or_fixed", i => i.Type == PythonObj.ObjType.BOOL && !i.Bool },
+                        {"pass_context", i => i.Type == PythonObj.ObjType.BOOL && !i.Bool },
+                        {"hotspot", i => i.Type == PythonObj.ObjType.BOOL && !i.Bool },
+                        {"replaces", i => i.Type == PythonObj.ObjType.BOOL && i.Bool },
+                    });
+                    var scope = obj.Fields["scope"].Bool;
+                    switch (obj.Fields["displayable"].Name)
+                    {
+                        case "renpy.text.text.Text":
+                            List<RenpyCallParameter> parameters = new List<RenpyCallParameter>();
+                            parameters.Add(new RenpyCallParameter("", ExtractPyExpr(obj.Fields["positional"].List[0])));
+                            foreach (var keyword in obj.Fields["keyword"].List)
+                            {
+                                parameters.Add(new RenpyCallParameter(keyword.Tuple[0].String, ExtractPyExpr(keyword.Tuple[1])));
+                            }
+                            container.Add(new RenpyStandardProxyLib.Text(parameters.ToArray()));
+                            break;
+                        case "renpy.display.layout.Window":
+
+                            break;
+                        default:
+                            if (!seenNames.Add(obj.Name))
+                            {
+                                Debug.LogWarning("Need to handle " + obj.Name);
+                            }
+                            return false;
+                    }
+                    break;
+                default:
+                    if (!seenNames.Add(obj.Name))
+                    {
+                        Debug.LogWarning("Need to handle " + obj.Name);
+                    }
+                    return false;
+            }
+            return true;
+        }
+
         private static RenpyBlock BuildBlock(string name, PythonObj block)
         {
             var result = new RenpyBlock(name);
@@ -702,7 +890,8 @@ namespace TestDDLCMod
                         {
                             renpyShow.ShowData += " onlayer " + imspec[4].String;
                             renpyShow.show.Layer = imspec[4].String;
-                        } else
+                        }
+                        else
                         {
                             renpyShow.show.Layer = "master";
                         }
@@ -1180,6 +1369,20 @@ namespace TestDDLCMod
                 }
             }
         }
+        private static string ExtractStore(PythonObj stmt)
+        {
+            var store = stmt.Fields["store"].String;
+            if (store == "store")
+            {
+                return "";
+            }
+            else if (store.StartsWith("store."))
+            {
+                return store.Substring("store.".Length);
+            }
+            Debug.LogWarning("Weird name for store: " + store);
+            return store;
+        }
     }
 
     public class PlaceholderLine : Line, IApply
@@ -1193,6 +1396,89 @@ namespace TestDDLCMod
         public void Apply(IContext context)
         {
             Debug.Log("Encountered placeholder for: " + desc);
+        }
+    }
+
+    public class CallStubber
+    {
+        public static CallStubber instance = new CallStubber();
+
+        public void gui_init(int a, int b) { }
+
+        public Dictionary<string, DataValue> DynamicCharacter(string name = "", Dictionary<string, DataValue> kind = null, string image = "",
+            string voice_tag = "", string what_prefix = "", string what_suffix = "", string who_prefix = "", string who_suffix = "",
+            string condition = "", bool interact = true, bool advance = true, string mode = "", string screen = "", string ctc = "", string ctc_pause = "",
+            string ctc_timedpause = "", string ctc_position = "")
+        {
+            return Character(name, kind, image, voice_tag, what_prefix, what_suffix, who_prefix, who_suffix, /*dynamic=*/true,
+                condition, interact, advance, mode, screen, ctc, ctc_pause, ctc_timedpause, ctc_position);
+        }
+
+
+        public Dictionary<string, DataValue> Character(object name = null, Dictionary<string, DataValue> kind = null, string image = "",
+            string voice_tag = "", string what_prefix = "", string what_suffix = "", string who_prefix = "", string who_suffix = "", bool dynamic = false,
+            string condition = "", bool interact = true, bool advance = true, string mode = "", string screen = "", string ctc = "", string ctc_pause = "",
+            object ctc_timedpause = null, string ctc_position = "")
+        {
+            var result = new Dictionary<string, DataValue>()
+            {
+                {"name", new DataValue(name) },
+                {"image", new DataValue(image) },
+                {"voice_tag", new DataValue(voice_tag) },
+                {"what_prefix", new DataValue(what_prefix) },
+                {"what_suffix", new DataValue(what_suffix) },
+                {"who_prefix", new DataValue(who_prefix) },
+                {"who_suffix", new DataValue(who_suffix) },
+                {"dynamic", new DataValue(dynamic) },
+                {"condition", new DataValue(condition) },
+                {"interact", new DataValue(interact) },
+                {"advance", new DataValue(advance) },
+                {"mode", new DataValue(mode) },
+                {"screen", new DataValue(screen) },
+                {"ctc", new DataValue(ctc) },
+                {"ctc_pause", new DataValue(ctc_pause) },
+                {"ctc_timedpause", new DataValue(ctc_timedpause) },
+                {"ctc_position", new DataValue(ctc_position) },
+            };
+            if (null != kind)
+            {
+                foreach (var entry in kind)
+                {
+                    if (result.ContainsKey(entry.Key))
+                    {
+                        result.Remove(entry.Key);
+                        result.Add(entry.Key, entry.Value);
+                    }
+                }
+            }
+            return result;
+        }
+
+        public bool hasattr(object context, string attr)
+        {
+            if (context is Dictionary<string, DataValue> dict)
+            {
+                return dict.ContainsKey(attr);
+            }
+            return false;
+        }
+
+        public static void StubCalls(RenpyExecutionContext context)
+        {
+            // make sure context looks to us for function resolution first
+            var m_LibObjects = PatchRenpyScriptExecution.GetPrivateField<RenpyExecutionContext, object[]>(context, "m_LibObjects");
+            if (!m_LibObjects.Any(o => o.GetType() == typeof(CallStubber)))
+            {
+                object[] newObjects = new object[m_LibObjects.Length + 1];
+                newObjects[0] = instance;
+                m_LibObjects.CopyTo(newObjects, 1);
+                PatchRenpyScriptExecution.SetPrivateField(context, "m_LibObjects", newObjects);
+            }
+
+            context.SetVariableObject("Character", new FunctionRedirect(instance, "Character"));
+            context.AddScope("gui");
+            context.SetVariableObject("gui.init", new FunctionRedirect(instance, "gui_init"));
+            context.AddScope("store");
         }
     }
 }
