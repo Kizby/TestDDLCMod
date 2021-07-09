@@ -5,6 +5,7 @@ using RenPyParser.VGPrompter.DataHolders;
 using SimpleExpressionEngine;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Reflection.Emit;
 using UnityEngine;
 using Parser = SimpleExpressionEngine.Parser;
@@ -49,7 +50,7 @@ namespace TestDDLCMod
     {
         static void Prefix(Parser __instance)
         {
-            var tokenizer = typeof(Parser).GetField("_tokenizer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(__instance) as Tokenizer;
+            var tokenizer = PatchRenpyScriptExecution.GetPrivateField<Parser, Tokenizer>(__instance, "_tokenizer");
             tokenizer.ParsingParameters(true);
         }
         static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
@@ -72,6 +73,75 @@ namespace TestDDLCMod
         }
     }
 
+    // teach parser how to handle
+    // $ if condition: action
+    [HarmonyPatch(typeof(Parser), "ParseConditional")]
+    public static class EnhanceParseConditional
+    {
+        static bool Prefix(Parser __instance, ref Node __result)
+        {
+            var tokenizer = PatchRenpyScriptExecution.GetPrivateField<Parser, Tokenizer>(__instance, "_tokenizer");
+            if (tokenizer.Token != Token.If)
+            {
+                return true;
+            }
+
+            tokenizer.NextToken();
+            var parseOr = typeof(Parser).GetMethod("ParseOr", BindingFlags.Instance | BindingFlags.NonPublic);
+            var parseStatement = typeof(Parser).GetMethod("ParseStatement", BindingFlags.Instance | BindingFlags.NonPublic);
+            var condition = parseOr.Invoke(__instance, new object[] { }) as Node;
+
+            if (tokenizer.Token != EnhanceTokenizer.Colon)
+            {
+                throw new SyntaxException("No colon after if clause; " + tokenizer.Token + " " + tokenizer.Identifier + " instead");
+            }
+            tokenizer.NextToken();
+
+            var trueNode = parseStatement.Invoke(__instance, new object[] { }) as Node;
+            var falseNode = Activator.CreateInstance(__instance.GetType().Assembly.GetType("SimpleExpressionEngine.NodeNone")) as Node;
+            __result = __instance.GetType().Assembly.GetType("SimpleExpressionEngine.NodeConditional")
+                .GetConstructor(new Type[] { typeof(Node), typeof(Node), typeof(Node) })
+                .Invoke(new object[] { condition, trueNode, falseNode }) as Node;
+
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(Tokenizer), "CreateNewToken")]
+    public static class EnhanceTokenizer
+    {
+        public static readonly Token Colon = Token.None + 1;
+
+        static FieldInfo currentCharField = typeof(Tokenizer).GetField("_currentChar", BindingFlags.Instance | BindingFlags.NonPublic);
+        static MethodInfo nextCharMethod = typeof(Tokenizer).GetMethod("NextChar", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        static void Prefix(Tokenizer __instance, ref Tokenizer.TokenizerItem item, ref bool __state)
+        {
+            __state = false;
+            if ((bool)typeof(Tokenizer).GetField("eofReached", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(__instance))
+            {
+                return;
+            }
+            while (char.IsWhiteSpace((char)currentCharField.GetValue(__instance)))
+            {
+                nextCharMethod.Invoke(__instance, new object[0]);
+            }
+            if ((char)currentCharField.GetValue(__instance) == ':')
+            {
+                __state = true;
+                item._currentToken = Colon;
+            }
+        }
+        static void Postfix(Tokenizer __instance, ref bool __state)
+        {
+            if (__state)
+            {
+                nextCharMethod.Invoke(__instance, new object[0]);
+            }
+        }
+    }
+
+
     [HarmonyPatch(typeof(OneLinePython), "Parse")]
     public static class LetMeHandleSyntaxExceptions
     {
@@ -83,7 +153,7 @@ namespace TestDDLCMod
                 {
                     yield return instruction;
                     yield return new CodeInstruction(OpCodes.Pop);
-                    yield return new CodeInstruction(OpCodes.Throw);
+                    yield return new CodeInstruction(OpCodes.Rethrow);
                     yield return new CodeInstruction(OpCodes.Ldstr, "Not the exception oops");
                     yield return new CodeInstruction(OpCodes.Ldstr, "; not an error string either");
                 }
@@ -92,15 +162,6 @@ namespace TestDDLCMod
                     yield return instruction;
                 }
             }
-        }
-    }
-
-    [HarmonyPatch(typeof(Tokenizer), "CreateNewToken")]
-    public static class InspectTokenizerCreateNewToken
-    {
-        static void Postfix(Tokenizer __instance)
-        {
-            //Debug.Log("Token: " + __instance.Token);
         }
     }
 
@@ -126,7 +187,10 @@ namespace TestDDLCMod
     {
         static void Postfix(Line __result)
         {
-            Debug.Log("Line: " + __result?.ToString());
+            if (__result != null)
+            {
+                Debug.Log("Line: " + __result.ToString());
+            }
         }
     }
 

@@ -88,15 +88,18 @@ namespace TestDDLCMod
                 rawBlockEntryPoints.Add(entry.Key, new BlockEntryPoint(entry.Key));
             }
 
-            Debug.Log("Unparseable python:");
-            foreach (var entry in unparseablePython)
+            if (unparseablePython.Count > 0)
             {
-                Debug.Log(Indent(entry.Item1));
-                Debug.Log("||||||||||||||||");
-                Debug.Log(Indent(entry.Item2.Message));
-                Debug.Log("||||||||||||||||");
-                Debug.Log(Indent(entry.Item2.StackTrace));
-                Debug.Log("----------------");
+                Debug.Log("Unparseable python:");
+                foreach (var entry in unparseablePython)
+                {
+                    Debug.Log(Indent(entry.Item1));
+                    Debug.Log("||||||||||||||||");
+                    Debug.Log(Indent(entry.Item2.Message));
+                    Debug.Log("||||||||||||||||");
+                    Debug.Log(Indent(entry.Item2.StackTrace));
+                    Debug.Log("----------------");
+                }
             }
         }
 
@@ -458,11 +461,11 @@ namespace TestDDLCMod
             ++lineNumber;
         }
 
-        private static U GetPrivateField<T, U>(T obj, string field) where T : class where U : class
+        public static U GetPrivateField<T, U>(T obj, string field) where T : class where U : class
         {
             return typeof(T).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(obj) as U;
         }
-        private static void SetPrivateField<T, U>(T obj, string field, U value) where T : class where U : class
+        public static void SetPrivateField<T, U>(T obj, string field, U value) where T : class where U : class
         {
             typeof(T).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(obj, value);
         }
@@ -613,6 +616,11 @@ namespace TestDDLCMod
                         catch (SyntaxException e)
                         {
                             unparseablePython.Add(Tuple.Create(codeString, e));
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogWarning("Inner parser exception!");
+                            Debug.LogWarning(Indent(e.ToString()));
                         }
                     break;
                 case "renpy.ast.If":
