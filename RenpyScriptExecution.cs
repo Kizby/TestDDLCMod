@@ -1,4 +1,4 @@
-using HarmonyLib;
+﻿using HarmonyLib;
 using RenpyParser;
 using RenPyParser;
 using RenPyParser.Transforms;
@@ -24,7 +24,7 @@ namespace TestDDLCMod
             MaybeModContext(__instance, ____executionContext);
         }
 
-        private static bool DumpBlocks = true;
+        private static bool DumpBlocks = false;
 
         private static int depth = "[Info   : Unity Log] ".Length;
         private static int lineNumber = 0;
@@ -660,26 +660,67 @@ namespace TestDDLCMod
                     goto case "renpy.ast.Show";
                 case "renpy.ast.Show":
                     ValidateObj(obj, new Dictionary<string, Predicate<PythonObj>>() {
-                        { "atl", i => i.Type == PythonObj.ObjType.NONE},
+                        { "atl", i => i.Type == PythonObj.ObjType.NONE || i.Type == PythonObj.ObjType.NEWOBJ},
                     });
                     ValidateTuple(obj, "imspec", new List<Predicate<PythonObj>>()
                     {
                         i => i.Type == PythonObj.ObjType.TUPLE && i.Tuple.Count < 3 && i.Tuple.TrueForAll(j => j.Type == PythonObj.ObjType.STRING),
+                        i => i.Type == PythonObj.ObjType.NONE || i.Type == PythonObj.ObjType.NEWOBJ,
+                        i => i.Type == PythonObj.ObjType.NONE || i.Type == PythonObj.ObjType.STRING,
+                        i => i.Type == PythonObj.ObjType.LIST && (obj.Name == "renpy.ast.Show" || i.List.Count == 0),
                         i => i.Type == PythonObj.ObjType.NONE,
-                        i => i.Type == PythonObj.ObjType.NONE,
-                        i => i.Type == PythonObj.ObjType.LIST && i.List.Count == 0,
-                        i => i.Type == PythonObj.ObjType.NONE,
-                        i => i.Type == PythonObj.ObjType.NONE,
+                        i => i.Type == PythonObj.ObjType.NONE || i.Type == PythonObj.ObjType.NEWOBJ,
                         i => i.Type == PythonObj.ObjType.LIST && i.List.Count == 0,
                     });
                     var imspec = obj.Fields["imspec"].Tuple;
                     var args = imspec[0].Tuple;
+                    string stringCall = null;
+                    if (imspec[1].Type == PythonObj.ObjType.NEWOBJ)
+                    {
+                        stringCall = ExtractPyExpr(imspec[1]);
+                    }
                     if (obj.Name == "renpy.ast.Scene")
                     {
                         container.Add(new RenpyScene("scene " + args.Join(a => a.String, " ")));
                     } else
                     {
-                        container.Add(new RenpyShow("show " + args.Join(a => a.String, " ")));
+                        var renpyShow = new RenpyShow("show ");
+                        if (stringCall != null) {
+                            renpyShow.ShowData += "expression ";
+                            renpyShow.show.StringCall = Parser.Compile(stringCall);
+                        } 
+                        renpyShow.ShowData += args.Join(a => a.String, " ");
+                         
+                        if (imspec[2].Type == PythonObj.ObjType.STRING)
+                        {
+                            renpyShow.ShowData += " as " + imspec[2].String;
+                            renpyShow.show.As = imspec[2].String;
+                        }
+
+                        if (imspec[5].Type == PythonObj.ObjType.NEWOBJ)
+                        {
+                            var zorder = int.Parse(ExtractPyExpr(imspec[5]));
+                            renpyShow.ShowData += " zorder " + zorder;
+                            renpyShow.show.ZOrder = zorder;
+                            renpyShow.show.HasZOrder = true;
+                        }
+
+                        var ats = imspec[3].List.Select(i => ExtractPyExpr(i)).ToArray();
+                        if (ats.Length > 0)
+                        {
+                            renpyShow.ShowData += " at " + ats[0];
+                            renpyShow.show.TransformName = ats[0];
+                            if (ats.Length > 1)
+                            {
+                                Debug.LogWarning("Need to handle multiple ats in show!");
+                            }
+                        }
+
+                        if (obj.Fields["atl"].Type == PythonObj.ObjType.NEWOBJ)
+                        {
+                            Debug.LogWarning("Need to handle atl block");
+                        }
+                        container.Add(renpyShow);
                     }
                     break;
                 case "renpy.ast.UserStatement":
@@ -817,6 +858,7 @@ namespace TestDDLCMod
                                 var callName = expression.constantStrings[call.argumentIndex];
                                 var newCallName = "_screen_" + callName;
                                 call.argumentIndex = expression.constantStrings.Count;
+                                instructions[instructions.Count - 1] = call;
                                 expression.constantStrings.Add(newCallName);
                                 container.Add(new RenpyStandardProxyLib.Expression(expression, true));
                                 break;
@@ -830,6 +872,7 @@ namespace TestDDLCMod
                             }
                             else
                             {
+                                Debug.Log("Unexpected user statement: " + line);
                                 renpyHide.hide = new Hide(lineArgs[1], false);
                             }
                             container.Add(renpyHide);
@@ -845,6 +888,7 @@ namespace TestDDLCMod
                                 var callName = expression.constantStrings[call.argumentIndex];
                                 var newCallName = "_screen_" + callName;
                                 call.argumentIndex = expression.constantStrings.Count;
+                                instructions[instructions.Count - 1] = call;
                                 expression.constantStrings.Add(newCallName);
                                 container.Add(new RenpyStandardProxyLib.Expression(expression, true));
 
@@ -892,7 +936,7 @@ namespace TestDDLCMod
                 case "renpy.ast.With":
                     var rawExpr = ExtractPyExpr(obj.Fields["expr"]);
                     var expr = Parser.Compile(rawExpr);
-                    container.Add(new RenpyWith("with " + rawExpr, expr));
+                    container.Add(new RenpyWith(rawExpr, expr));
                     break;
                 case "renpy.ast.Translate":
                     // not doing anything with these nodes (yet?)
@@ -988,30 +1032,14 @@ namespace TestDDLCMod
                             }
                         ) as Line);
                         break;
-                    }/*
-                    if (dialogueLine.HasCps)
-                    {
-                        Log("dialogueLine.Cps: " + dialogueLine.Cps);
-                        Log("dialogueLine.CpsEndIndex: " + dialogueLine.CpsEndIndex);
-                        Log("dialogueLine.CpsStartIndex: " + dialogueLine.CpsStartIndex);
                     }
-                    if (dialogueLine.WaitIndicesAndTimes.Count > 0)
-                    {
-                        Log("dialogueLine.WaitIndicesAndTimes: " + dialogueLine.WaitIndicesAndTimes.Join(t => "(" + t.Item1 + ", " + t.Item2 + ")"));
-                    }
-                    toLog = "\"" + Renpy.Text.GetLocalisedString(dialogueLine.TextID, label: dialogueLine.Label) + "\"";
-                    if (dialogueLine.Variant != "")
-                    {
-                        toLog = dialogueLine.Variant + " " + toLog;
-                    }
-                    if (dialogueLine.Tag != "")
-                    {
-                        toLog = dialogueLine.Tag + " " + toLog;
-                    }*/
+                case "renpy.ast.Hide":
+                    container.Add(new RenpyHide() { hide = new Hide(obj.Fields["imspec"].Tuple[0].Tuple[0].String, false) });
+                    break;
+                case "renpy.ast.Pass":
+                    container.Add(new RenpyNOP());
                     break;
                 case "renpy.ast.Call":
-                case "renpy.ast.Pass":
-                case "renpy.ast.Hide":
                 case "renpy.ast.ShowLayer":
                 case "renpy.ast.Jump":
                 case "renpy.ast.Label":
