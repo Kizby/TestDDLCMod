@@ -668,6 +668,7 @@ namespace TestDDLCMod
                     {
                         Debug.Log("Need to implement " + obj.Name);
                     }
+                    container.Add(new PlaceholderLine(obj.Name));
                     return;
             }
         }
@@ -700,6 +701,20 @@ namespace TestDDLCMod
             }
             Debug.LogError("Trying to extractPyExpr on a " + expr.Type);
             return "";
+        }
+    }
+
+    public class PlaceholderLine : Line, IApply
+    {
+        private string desc;
+        public PlaceholderLine(string desc)
+        {
+            this.desc = desc;
+        }
+
+        public void Apply(IContext context)
+        {
+            Debug.Log("Encountered placeholder for: " + desc);
         }
     }
 }

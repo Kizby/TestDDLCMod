@@ -187,7 +187,7 @@ namespace TestDDLCMod
     {
         static void Postfix(Line __result)
         {
-            if (__result != null)
+            if (__result != null && !(__result is PlaceholderLine))
             {
                 Debug.Log("Line: " + __result.ToString());
             }
