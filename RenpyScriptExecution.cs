@@ -894,10 +894,16 @@ namespace TestDDLCMod
                             if (lineArgs[1] == "hide")
                             {
                                 container.Add(new RenpyWindow() { window = new Window() { Mode = RenpyWindowManager.WindowManagerMode.Hide, Transition = transition } });
-                            } else if (lineArgs[1] == "show")
+                            }
+                            else if (lineArgs[1] == "show")
                             {
                                 container.Add(new RenpyWindow() { window = new Window() { Mode = RenpyWindowManager.WindowManagerMode.Show, Transition = transition } });
-                            } else
+                            }
+                            else if (lineArgs[1] == "auto")
+                            {
+                                container.Add(new RenpyWindow() { window = new Window() { Mode = RenpyWindowManager.WindowManagerMode.Auto, Transition = transition } });
+                            }
+                            else
                             {
                                 Debug.LogWarning("Unexpected window statement: " + line);
                                 goto default;
@@ -914,11 +920,126 @@ namespace TestDDLCMod
                     }
                     break;
                 case "renpy.ast.With":
-                    var expr = ExtractPyExpr(obj.Fields["expr"]);
-                    container.Add(new RenpyWith("with " + expr, Parser.Compile(expr)));
+                    var rawExpr = ExtractPyExpr(obj.Fields["expr"]);
+                    var expr = Parser.Compile(rawExpr);
+                    container.Add(new RenpyWith("with " + rawExpr, expr));
                     break;
                 case "renpy.ast.Translate":
+                    // not doing anything with these nodes (yet?)
+                    foreach (var stmt in obj.Fields["block"].List)
+                    {
+                        ParsePythonObj(stmt, container, label);
+                    }
+                    break;
                 case "renpy.ast.EndTranslate":
+                    break;
+                case "renpy.ast.Say":
+                    {
+                        int ID = 0;
+                        string tag = "";
+                        string variant = "";
+                        bool to_interpolate = false;
+                        bool skipWait = false;
+                        bool hasCps = false;
+                        int cps = 1;
+                        int cpsStart = 0;
+                        int cpsEnd = 0;
+                        bool cpsMultiplier = false;
+                        bool developerCommentary = false;
+                        int immediateUntil = 0;
+                        List<Tuple<int, float>> waitTuples = new List<Tuple<int, float>>();
+                        string command_type = "say";
+
+                        if (obj.Fields["who_fast"].Bool)
+                        {
+                            tag = obj.Fields["who"].String;
+                        }
+                        if (obj.Fields["attributes"].Type != PythonObj.ObjType.NONE)
+                        {
+                            variant = obj.Fields["attributes"].Tuple[0].String;
+                        }
+                        if (!obj.Fields["interact"].Bool)
+                        {
+                            Debug.LogWarning("Need to handle renpy.ast.Say.interact = False");
+                        }
+
+                        var what = obj.Fields["what"].String;
+
+                        // First need to add this text to the English dictionary for hashing
+                        var englishLines = Renpy.EnglishText as Lines;
+                        var englishDict = englishLines.GetDictionary();
+                        if (!englishDict.ContainsKey(label))
+                        {
+                            englishDict.Add(label, new Dictionary<int, string>());
+                        }
+                        bool foundExisting = false;
+                        foreach (var entry in englishDict[label])
+                        {
+                            if (entry.Value == what)
+                            {
+                                ID = entry.Key;
+                                foundExisting = true;
+                                break;
+                            }
+                        }
+                        if (!foundExisting)
+                        {
+                            ID = what.GetHashCode();
+                            englishDict[label][ID] = what;
+                        }
+
+                        var lines = Renpy.Text as Lines;
+                        var textDict = lines.GetDictionary();
+                        if (!textDict.ContainsKey(label))
+                        {
+                            textDict.Add(label, new Dictionary<int, string>());
+                        }
+                        textDict[label][ID] = what;
+
+                        container.Add(Activator.CreateInstance(
+                            typeof(DialogueLine).Assembly.GetType("RenpyParser.RenpyDialogueLine"),
+                            new object[]
+                            {
+                                label,
+                                ID,
+                                tag,
+                                variant,
+                                to_interpolate,
+                                skipWait,
+                                hasCps,
+                                cps,
+                                cpsStart,
+                                cpsEnd,
+                                cpsMultiplier,
+                                developerCommentary,
+                                immediateUntil,
+                                waitTuples,
+                                command_type,
+                            }
+                        ) as Line);
+                        Debug.Log(obj);
+                        goto default;
+                    }/*
+                    if (dialogueLine.HasCps)
+                    {
+                        Log("dialogueLine.Cps: " + dialogueLine.Cps);
+                        Log("dialogueLine.CpsEndIndex: " + dialogueLine.CpsEndIndex);
+                        Log("dialogueLine.CpsStartIndex: " + dialogueLine.CpsStartIndex);
+                    }
+                    if (dialogueLine.WaitIndicesAndTimes.Count > 0)
+                    {
+                        Log("dialogueLine.WaitIndicesAndTimes: " + dialogueLine.WaitIndicesAndTimes.Join(t => "(" + t.Item1 + ", " + t.Item2 + ")"));
+                    }
+                    toLog = "\"" + Renpy.Text.GetLocalisedString(dialogueLine.TextID, label: dialogueLine.Label) + "\"";
+                    if (dialogueLine.Variant != "")
+                    {
+                        toLog = dialogueLine.Variant + " " + toLog;
+                    }
+                    if (dialogueLine.Tag != "")
+                    {
+                        toLog = dialogueLine.Tag + " " + toLog;
+                    }*/
+                    break;
                 case "renpy.ast.Call":
                 case "renpy.ast.Pass":
                 case "renpy.ast.Show":
