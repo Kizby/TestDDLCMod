@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using RenpyParser;
 using RenPyParser;
 using RenPyParser.Transforms;
@@ -656,6 +656,10 @@ namespace TestDDLCMod
                 case "renpy.ast.Scene":
                     ValidateObj(obj, new Dictionary<string, Predicate<PythonObj>>() {
                         { "layer", i => i.Type == PythonObj.ObjType.NONE},
+                    });
+                    goto case "renpy.ast.Show";
+                case "renpy.ast.Show":
+                    ValidateObj(obj, new Dictionary<string, Predicate<PythonObj>>() {
                         { "atl", i => i.Type == PythonObj.ObjType.NONE},
                     });
                     ValidateTuple(obj, "imspec", new List<Predicate<PythonObj>>()
@@ -670,7 +674,13 @@ namespace TestDDLCMod
                     });
                     var imspec = obj.Fields["imspec"].Tuple;
                     var args = imspec[0].Tuple;
-                    container.Add(new RenpyScene("scene " + args.Join(a => a.String, " ")));
+                    if (obj.Name == "renpy.ast.Scene")
+                    {
+                        container.Add(new RenpyScene("scene " + args.Join(a => a.String, " ")));
+                    } else
+                    {
+                        container.Add(new RenpyShow("show " + args.Join(a => a.String, " ")));
+                    }
                     break;
                 case "renpy.ast.UserStatement":
                     ValidateObj(obj, new Dictionary<string, Predicate<PythonObj>>()
@@ -811,46 +821,6 @@ namespace TestDDLCMod
                                 container.Add(new RenpyStandardProxyLib.Expression(expression, true));
                                 break;
                             }
-                            var renpyShow = new RenpyShow(line);
-                            var show = renpyShow.show;
-                            var index = 1;
-
-                            // not handling show expression rn
-                            /*
-                            if (show.As != "")
-                            {
-                                toLog += " as " + show.As;
-                            }
-                            var transform = show.TransformName;
-                            if (transform == "" && show.IsLayer)
-                            {
-                                transform = "resetlayer";
-                            }
-                            if (transform != "")
-                            {
-                                toLog += " at " + show.TransformName;
-                                if (show.TransformCallParameters.Length > 0)
-                                {
-                                    toLog += ":";
-                                    Log(toLog);
-                                    toLog = "";
-                                    LogParameters(show.TransformCallParameters);
-                                }
-                            }
-                            else if (show.TransformCallParameters.Length > 0)
-                            {
-                                Debug.Log("Why does show statement without transform have parameters?");
-                                LogParameters(show.TransformCallParameters);
-                            }
-                            if (show.HasBehind)
-                            {
-                                toLog += " behind " + show.Behind;
-                            }
-                            toLog += " onlayer " + show.Layer;
-                            if (show.HasZOrder)
-                            {
-                                toLog += " zorder " + show.ZOrder;
-                            }*/
                             goto default;
                         case "hide":
                             var renpyHide = new RenpyHide();
@@ -1017,8 +987,7 @@ namespace TestDDLCMod
                                 command_type,
                             }
                         ) as Line);
-                        Debug.Log(obj);
-                        goto default;
+                        break;
                     }/*
                     if (dialogueLine.HasCps)
                     {
@@ -1042,7 +1011,6 @@ namespace TestDDLCMod
                     break;
                 case "renpy.ast.Call":
                 case "renpy.ast.Pass":
-                case "renpy.ast.Show":
                 case "renpy.ast.Hide":
                 case "renpy.ast.ShowLayer":
                 case "renpy.ast.Jump":
