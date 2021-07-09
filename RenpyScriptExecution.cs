@@ -682,15 +682,17 @@ namespace TestDDLCMod
                     if (obj.Name == "renpy.ast.Scene")
                     {
                         container.Add(new RenpyScene("scene " + args.Join(a => a.String, " ")));
-                    } else
+                    }
+                    else
                     {
                         var renpyShow = new RenpyShow("show ");
-                        if (stringCall != null) {
+                        if (stringCall != null)
+                        {
                             renpyShow.ShowData += "expression ";
                             renpyShow.show.StringCall = Parser.Compile(stringCall);
-                        } 
+                        }
                         renpyShow.ShowData += args.Join(a => a.String, " ");
-                         
+
                         if (imspec[2].Type == PythonObj.ObjType.STRING)
                         {
                             renpyShow.ShowData += " as " + imspec[2].String;
@@ -1040,8 +1042,57 @@ namespace TestDDLCMod
                     container.Add(new RenpyNOP());
                     break;
                 case "renpy.ast.Call":
-                case "renpy.ast.ShowLayer":
+                    var callLabel = "";
+                    if (!obj.Fields["expression"].Bool)
+                    {
+                        callLabel = obj.Fields["label"].String;
+                    }
+                    else
+                    {
+                        // don't have a context right now, just assume it's a constant string
+                        callLabel = ExtractPyExpr(obj.Fields["label"]);
+                    }
+                    var renpyCall = new RenpyGoTo(callLabel, true);
+                    if (obj.Fields["arguments"].Type == PythonObj.ObjType.NONE)
+                    {
+                        renpyCall.callParameters = new RenpyCallParameter[0];
+                    }
+                    else
+                    {
+                        var arguments = obj.Fields["arguments"];
+                        ValidateObj(arguments, new Dictionary<string, Predicate<PythonObj>>()
+                        {
+                            {"arguments", i => i.Type == PythonObj.ObjType.LIST},
+                            {"extrapos", i => i.Type == PythonObj.ObjType.NONE },
+                            {"extrakw", i => i.Type == PythonObj.ObjType.NONE },
+                        });
+                        var kvPairs = arguments.Fields["arguments"].List;
+                        renpyCall.callParameters = new RenpyCallParameter[kvPairs.Count];
+                        for (var i = 0; i < kvPairs.Count; ++i)
+                        {
+                            var rawName = kvPairs[i].Tuple[0];
+                            var rawValue = kvPairs[i].Tuple[1];
+                            var name = rawName.Type == PythonObj.ObjType.STRING ? rawName.String : "";
+                            var value = ExtractPyExpr(rawValue);
+                            renpyCall.callParameters[i] = new RenpyCallParameter(name, value);
+                        }
+                    }
+                    container.Add(renpyCall);
+                    break;
                 case "renpy.ast.Jump":
+                    string target;
+                    if (obj.Fields["expression"].Bool)
+                    {
+                        // don't have a context right now, just assume it's a constant string
+                        target = ExtractPyExpr(obj.Fields["target"]);
+                    }
+                    else
+                    {
+                        target = obj.Fields["target"].String;
+                    }
+                    container.Add(new RenpyGoTo(target, false));
+                    break;
+                case "renpy.ast.ShowLayer":
                 case "renpy.ast.Label":
                 default:
                     if (seenNames.Add(obj.Name))
