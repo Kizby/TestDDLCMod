@@ -711,9 +711,7 @@ namespace TestDDLCMod
                                 break;
                             }
 
-                            var asset = lineArgs[2];
-                            if (asset.StartsWith("\"") && asset.Substring(1).Contains("\"") ||
-                                asset.StartsWith("'") && asset.Substring(1).Contains("'"))
+                            if ("\"'".Contains(lineArgs[2][0]))
                             {
                                 var quoteIndex = lineArgs[0].Length + 1 + lineArgs[1].Length + 1;
                                 var quoteChar = line[quoteIndex];
@@ -721,7 +719,8 @@ namespace TestDDLCMod
                                 {
                                     Debug.LogWarning("Screwed up indices, char " + quoteIndex + " should be a quote in: " + line);
                                 }
-                                asset = line.Substring(quoteIndex + 1, line.Substring(quoteIndex + 1).IndexOf(quoteChar));
+                                var asset = line.Substring(quoteIndex + 1, line.Substring(quoteIndex + 1).IndexOf(quoteChar));
+                                lineArgs[2] = asset;
                                 if (asset.Contains(" "))
                                 {
                                     // blech, need to fix up lineArgs
@@ -734,7 +733,7 @@ namespace TestDDLCMod
                                     lineArgs = newLineArgs;
                                 }
                             }
-                            renpyPlay.play.Asset = asset;
+                            renpyPlay.play.Asset = lineArgs[2];
                             if (lineArgs.Length > 3)
                             {
                                 for (var i = 3; i < lineArgs.Length; ++i)
@@ -747,7 +746,7 @@ namespace TestDDLCMod
                                         case "loop":
                                             // ignoring these for now
                                             break;
-                                        default: Debug.LogWarning("Weird option in play: " + line); break;
+                                        default: Debug.LogWarning("Weird option in play (" + lineArgs[i] + "): " + line); break;
                                     }
                                 }
                             }
@@ -864,7 +863,46 @@ namespace TestDDLCMod
                                 renpyHide.hide = new Hide(lineArgs[1], false);
                             }
                             container.Add(renpyHide);
+                            break;
+                        case "call":
+                            if (lineArgs[1] == "screen")
+                            {
+                                // compiled expression ends with "FunctionCall tear" or similar
+                                // need to replace that with "FunctionCall _screen_tear" to use the new logic
+                                var expression = Parser.Compile(line.Substring(line.IndexOf("call screen ") + "call screen ".Length));
+                                var instructions = expression.instructions;
+                                var call = instructions[instructions.Count - 1];
+                                var callName = expression.constantStrings[call.argumentIndex];
+                                var newCallName = "_screen_" + callName;
+                                call.argumentIndex = expression.constantStrings.Count;
+                                expression.constantStrings.Add(newCallName);
+                                container.Add(new RenpyStandardProxyLib.Expression(expression, true));
+
+                                // need to hide window and wait for the call to finish now
+                                container.Add(new RenpyStandardProxyLib.WindowAuto(false, "window auto hide"));
+                                container.Add(new RenpyStandardProxyLib.WaitForScreen(callName));
+                                break;
+                            }
                             goto default;
+                        case "window":
+                            CompiledExpression transition = null;
+                            if (lineArgs[1].Contains("("))
+                            {
+                                transition = Parser.Compile(line.Substring(line.IndexOf("window") + "window".Length));
+                                lineArgs[1] = lineArgs[1].Substring(0, lineArgs[1].IndexOf("("));
+                            }
+                            if (lineArgs[1] == "hide")
+                            {
+                                container.Add(new RenpyWindow() { window = new Window() { Mode = RenpyWindowManager.WindowManagerMode.Hide, Transition = transition } });
+                            } else if (lineArgs[1] == "show")
+                            {
+                                container.Add(new RenpyWindow() { window = new Window() { Mode = RenpyWindowManager.WindowManagerMode.Show, Transition = transition } });
+                            } else
+                            {
+                                Debug.LogWarning("Unexpected window statement: " + line);
+                                goto default;
+                            }
+                            break;
                         default:
                             Debug.Log("Need to handle userStatement line: " + line);
                             valid = false;
@@ -875,6 +913,10 @@ namespace TestDDLCMod
                         goto default;
                     }
                     break;
+                case "renpy.ast.With":
+                    var expr = ExtractPyExpr(obj.Fields["expr"]);
+                    container.Add(new RenpyWith("with " + expr, Parser.Compile(expr)));
+                    break;
                 case "renpy.ast.Translate":
                 case "renpy.ast.EndTranslate":
                 case "renpy.ast.Call":
@@ -882,7 +924,6 @@ namespace TestDDLCMod
                 case "renpy.ast.Show":
                 case "renpy.ast.Hide":
                 case "renpy.ast.ShowLayer":
-                case "renpy.ast.With":
                 case "renpy.ast.Jump":
                 case "renpy.ast.Label":
                 default:
@@ -908,6 +949,10 @@ namespace TestDDLCMod
         }
         private static string ExtractPyExpr(PythonObj expr)
         {
+            if (expr.Type == PythonObj.ObjType.NONE)
+            {
+                return "None";
+            }
             if (expr.Type == PythonObj.ObjType.STRING)
             {
                 return expr.String;
