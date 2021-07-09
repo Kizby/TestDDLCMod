@@ -651,6 +651,28 @@ namespace TestDDLCMod
                     jumpMap.Add(lastGoto, afterIf);
                     container.Add(afterIf);
                     break;
+                case "renpy.ast.Scene":
+                    if (obj.Fields["layer"].Type != PythonObj.ObjType.NONE)
+                    {
+                        Debug.Log("Need to handle a scene layer of type: " + obj.Fields["layer"].Type);
+                    }
+                    if (obj.Fields["atl"].Type != PythonObj.ObjType.NONE)
+                    {
+                        Debug.Log("Need to handle a scene atl of type: " + obj.Fields["atl"].Type);
+                    }
+                    var imspec = obj.Fields["imspec"].Tuple;
+                    var args = imspec[0].Tuple;
+                    if (imspec[1].Type != PythonObj.ObjType.NONE ||
+                        imspec[2].Type != PythonObj.ObjType.NONE ||
+                        imspec[3].Type != PythonObj.ObjType.LIST || imspec[3].List.Count > 0 ||
+                        imspec[4].Type != PythonObj.ObjType.NONE ||
+                        imspec[5].Type != PythonObj.ObjType.NONE ||
+                        imspec[6].Type != PythonObj.ObjType.LIST || imspec[6].List.Count > 0)
+                    {
+                        Debug.Log("Weird scene imspec: " + imspec);
+                    }
+                    container.Add(new RenpyScene("scene " + args.Join(a => a.String, " ")));
+                    break;
                 case "renpy.ast.Translate":
                 case "renpy.ast.EndTranslate":
                 case "renpy.ast.Call":
@@ -659,7 +681,6 @@ namespace TestDDLCMod
                 case "renpy.ast.Show":
                 case "renpy.ast.Hide":
                 case "renpy.ast.ShowLayer":
-                case "renpy.ast.Scene":
                 case "renpy.ast.With":
                 case "renpy.ast.Jump":
                 case "renpy.ast.Label":
