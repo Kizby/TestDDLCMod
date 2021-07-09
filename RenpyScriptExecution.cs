@@ -647,25 +647,30 @@ namespace TestDDLCMod
                         name = store + "." + name;
                     }
                     var value = ExecutePython(obj, context);
-                    switch (value.GetDataType())
+                    if (store == "audio")
                     {
-                        case DataType.Float:
-                            context.SetVariableFloat(name, value.GetFloat());
-                            break;
-                        case DataType.String:
-                            context.SetVariableString(name, value.GetString());
-                            break;
-                        case DataType.ObjectRef:
-                            context.SetVariableObject(name, value.GetObject());
-                            break;
-                        case DataType.None:
-                            // umm, maybe?
-                            context.SetVariableFloat(name, 0);
-                            break;
-                        default:
-                            Debug.LogWarning("Failed to set " + name + " to: " + ExtractPyExpr(obj.Fields["code"]));
-                            break;
+                        // these are audio assets, not strings
+                        context.SetVariableObject(name, RenpyAudioData.CreateAudioData(value.GetString()));
                     }
+                    else switch (value.GetDataType())
+                        {
+                            case DataType.Float:
+                                context.SetVariableFloat(name, value.GetFloat());
+                                break;
+                            case DataType.String:
+                                context.SetVariableString(name, value.GetString());
+                                break;
+                            case DataType.ObjectRef:
+                                context.SetVariableObject(name, value.GetObject());
+                                break;
+                            case DataType.None:
+                                // umm, maybe?
+                                context.SetVariableFloat(name, 0);
+                                break;
+                            default:
+                                Debug.LogWarning("Failed to set " + name + " to: " + ExtractPyExpr(obj.Fields["code"]));
+                                break;
+                        }
                     break;
                 case "renpy.ast.Style":
                     Debug.Log("Trying to build style " + obj.Fields["style_name"].String);
