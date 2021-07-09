@@ -81,10 +81,7 @@ namespace TestDDLCMod
                     rawBlockEntryPoints.Remove(entry.Key);
                 }
                 var newBlock = BuildBlock(entry.Key, entry.Value);
-                if (entry.Key == "splashscreen")
-                {
-                    newBlock.callParameters = new RenpyCallParameter[0];
-                }
+                newBlock.callParameters = new RenpyCallParameter[0];
                 rawBlocks.Add(entry.Key, newBlock);
                 rawBlockEntryPoints.Add(entry.Key, new BlockEntryPoint(entry.Key));
             }
@@ -668,7 +665,7 @@ namespace TestDDLCMod
                         i => i.Type == PythonObj.ObjType.NONE || i.Type == PythonObj.ObjType.NEWOBJ,
                         i => i.Type == PythonObj.ObjType.NONE || i.Type == PythonObj.ObjType.STRING,
                         i => i.Type == PythonObj.ObjType.LIST && (obj.Name == "renpy.ast.Show" || i.List.Count == 0),
-                        i => i.Type == PythonObj.ObjType.NONE,
+                        i => i.Type == PythonObj.ObjType.NONE || i.Type == PythonObj.ObjType.STRING,
                         i => i.Type == PythonObj.ObjType.NONE || i.Type == PythonObj.ObjType.NEWOBJ,
                         i => i.Type == PythonObj.ObjType.LIST && i.List.Count == 0,
                     });
@@ -691,12 +688,23 @@ namespace TestDDLCMod
                             renpyShow.ShowData += "expression ";
                             renpyShow.show.StringCall = Parser.Compile(stringCall);
                         }
+                        renpyShow.show.IsImage = true;
+                        renpyShow.show.ImageName = args[0].String;
+                        renpyShow.show.Variant = args.Count > 1 ? args[1].String : "";
                         renpyShow.ShowData += args.Join(a => a.String, " ");
 
                         if (imspec[2].Type == PythonObj.ObjType.STRING)
                         {
                             renpyShow.ShowData += " as " + imspec[2].String;
                             renpyShow.show.As = imspec[2].String;
+                        }
+                        if (imspec[4].Type == PythonObj.ObjType.STRING)
+                        {
+                            renpyShow.ShowData += " onlayer " + imspec[4].String;
+                            renpyShow.show.Layer = imspec[4].String;
+                        } else
+                        {
+                            renpyShow.show.Layer = "master";
                         }
 
                         if (imspec[5].Type == PythonObj.ObjType.NEWOBJ)
@@ -708,6 +716,11 @@ namespace TestDDLCMod
                         }
 
                         var ats = imspec[3].List.Select(i => ExtractPyExpr(i)).ToArray();
+                        renpyShow.show.TransformName = "";
+
+                        // not handling call parameters yet
+                        renpyShow.show.TransformCallParameters = new RenpyCallParameter[0];
+
                         if (ats.Length > 0)
                         {
                             renpyShow.ShowData += " at " + ats[0];
@@ -901,7 +914,7 @@ namespace TestDDLCMod
                             }
                             goto default;
                         case "window":
-                            CompiledExpression transition = null;
+                            CompiledExpression transition = new CompiledExpression();
                             if (lineArgs[1].Contains("("))
                             {
                                 transition = Parser.Compile(line.Substring(line.IndexOf("window") + "window".Length));
