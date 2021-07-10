@@ -239,6 +239,7 @@ namespace TestDDLCMod
             context.SetVariableObject("gui.init", new FunctionRedirect(this, "gui_init"));
             context.SetVariableObject("pass", null); // easier than actually making the python interpreter tokenize this
             context.SetVariableObject("nvl", new CharacterData()); // might special case this later, but stub for now
+            context.SetVariableFloat("_restart", 0); // what even sets this?
         }
     }
 }
