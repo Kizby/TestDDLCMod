@@ -1,6 +1,8 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using RenpyLauncher;
 using RenpyParser;
+using RenPyParser.AssetManagement;
+using RenPyParser.Images;
 using RenPyParser.VGPrompter.DataHolders;
 using SimpleExpressionEngine;
 using System;
@@ -138,6 +140,52 @@ namespace TestDDLCMod
             {
                 nextCharMethod.Invoke(__instance, new object[0]);
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(NodeVariableAssign), "Eval")]
+    public static class HandleCharacterDefinitions
+    {
+        // bug in transpiler keeps me from doing that, so just replace the method
+        public static bool Prefix(string ____variableName, Node ____valueExp, IContext ctx, ref DataValue __result)
+        {
+            DataValue dataValue = ____valueExp.Eval(ctx);
+            if (dataValue.IsObject<Mod_ProxyLib.Character>())
+            {
+                var character = dataValue.GetObjectAs<Mod_ProxyLib.Character>();
+                var characters = (ctx as RenpyExecutionContext).script.Characters;
+                if (!characters.Contains(character.name))
+                {
+                    // make sure characters are addressable by name
+                    characters.Add(character.name, character.value);
+                }
+                if (!characters.Contains(____variableName))
+                {
+                    // make sure characters are addressable by shorthand
+                    characters.Add(____variableName, character.value);
+                }
+            }
+            else if (dataValue.IsObject<Mod_ProxyLib.ParameterizedText>())
+            {
+                var script = (ctx as RenpyExecutionContext).script;
+                var blocks = script.Blocks;
+                var label = ____variableName + "_t";
+                if (!blocks.Contains(label))
+                {
+                    // need to add this transform
+                    var rawBlocks = PatchRenpyScriptExecution.GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
+                    var rawBlockEntryPoints = PatchRenpyScriptExecution.GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
+                    var block = new RenpyBlock(label);
+
+                    // just stub it for now
+                    rawBlocks.Add(label, block);
+                    rawBlockEntryPoints.Add(label, new BlockEntryPoint(label, 0));
+                }
+            }
+            ctx.SetVariable(____variableName, dataValue);
+            dataValue.ResetData();
+            __result = dataValue;
+            return false;
         }
     }
 

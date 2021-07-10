@@ -1,6 +1,7 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using RenpyParser;
 using RenPyParser;
+using RenPyParser.AssetManagement;
 using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using RenPyParser.VGPrompter.Script.Internal;
@@ -56,19 +57,6 @@ namespace TestDDLCMod
 
         private static void MaybeModContext(RenpyScriptExecution instance, RenpyExecutionContext context)
         {
-            if (!Mod.IsModded())
-            {
-                return;
-            }
-
-            // some renpy built-in methods aren't meaningful anymore
-            CallStubber.StubCalls(context);
-
-            foreach (var earlyPython in Mod.ActiveMod.EarlyPython)
-            {
-                ExecutePython(earlyPython, context);
-            }
-
             var script = context.script;
             var blocks = script.Blocks;
             var rawBlocks = GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
@@ -81,6 +69,33 @@ namespace TestDDLCMod
                     BlockEntryPoint entryPoint = rawBlockEntryPoints[entry.Key];
                     DumpBlock(entry.Key, entry.Value, entryPoint);
                 }
+            }
+
+            if (!Mod.IsModded())
+            {
+                return;
+            }
+
+            // let's load all the assets into memory
+            foreach (var bundleFile in Directory.GetFiles("Doki Doki Literature Club Plus_Data/StreamingAssets/AssetBundles/" + PathHelpers.GetPlatformForAssetBundles(Application.platform)))
+            {
+                if (bundleFile.EndsWith(".cy"))
+                {
+                    var label = Path.GetFileNameWithoutExtension(bundleFile);
+                    if (label.StartsWith("label "))
+                    {
+                        var dependencies = GetPrivateField<ActiveLabelAssetBundles, ActiveAssetBundles>(Renpy.Resources as ActiveLabelAssetBundles, "m_ActiveAssetBundles");
+                        //dependencies.PerformLoadBundleAsync(label);
+                    }
+                }
+            }
+
+            // some renpy built-in methods need to be mocked
+            Mod_ProxyLib.MockCalls(context);
+
+            foreach (var earlyPython in Mod.ActiveMod.EarlyPython)
+            {
+                ExecutePython(earlyPython, context);
             }
 
             foreach (var initBucket in Mod.ActiveMod.Inits)
@@ -679,7 +694,42 @@ namespace TestDDLCMod
                     Debug.Log("Trying to build transform " + obj.Fields["varname"].String);
                     break;
                 case "renpy.ast.Image":
-                    Debug.Log("Trying to build image " + obj.Fields["imgname"].Tuple[0].String);
+                    if (obj.Fields["atl"].Type != PythonObj.ObjType.NONE)
+                    {
+                        //Log("Need to handle an image with atl: " + obj.ToString());
+                        break;
+                    }
+                    //Debug.Log(obj.ToString());
+                    string bundle = "unbundled", imgName;
+                    if (obj.Fields["imgname"].Tuple.Count > 1)
+                    {
+                        bundle = obj.Fields["imgname"].Tuple[0].String;
+                        imgName = obj.Fields["imgname"].Tuple[1].String;
+                    }
+                    else
+                    {
+                        imgName = obj.Fields["imgname"].Tuple[0].String;
+                    }
+
+                    var actual = ExecutePython(obj, context);
+                    var characters = context.script.Characters;
+                    if (characters.Contains(bundle))
+                    {
+                        // actually a character sprite definition
+                        var fullname = bundle + "_" + imgName;
+                        characters.Add(fullname, new CharacterData(fullname, image: actual.GetString()));
+                    }
+                    else if (actual.IsObject<RenpyStandardProxyLib.Text>())
+                    {
+                        // made the block in the assignment
+                    }
+                    else
+                    {
+                        // need to make a block
+                        var fullname = bundle + " " + imgName;
+                        block = new RenpyBlock(fullname);
+                        block.Contents.Add(new RenpyLoadImage(fullname, actual.GetString()));
+                    }
                     break;
                 default:
                     Log("Need to handle single block of " + obj.Name);
@@ -1401,89 +1451,6 @@ namespace TestDDLCMod
         public void Apply(IContext context)
         {
             Debug.Log("Encountered placeholder for: " + desc);
-        }
-    }
-
-    public class CallStubber
-    {
-        public static CallStubber instance = new CallStubber();
-
-        public void gui_init(int a, int b) { }
-
-        public Dictionary<string, DataValue> DynamicCharacter(string name = "", Dictionary<string, DataValue> kind = null, string image = "",
-            string voice_tag = "", string what_prefix = "", string what_suffix = "", string who_prefix = "", string who_suffix = "",
-            string condition = "", bool interact = true, bool advance = true, string mode = "", string screen = "", string ctc = "", string ctc_pause = "",
-            string ctc_timedpause = "", string ctc_position = "")
-        {
-            return Character(name, kind, image, voice_tag, what_prefix, what_suffix, who_prefix, who_suffix, /*dynamic=*/true,
-                condition, interact, advance, mode, screen, ctc, ctc_pause, ctc_timedpause, ctc_position);
-        }
-
-
-        public Dictionary<string, DataValue> Character(object name = null, Dictionary<string, DataValue> kind = null, string image = "",
-            string voice_tag = "", string what_prefix = "", string what_suffix = "", string who_prefix = "", string who_suffix = "", bool dynamic = false,
-            string condition = "", bool interact = true, bool advance = true, string mode = "", string screen = "", string ctc = "", string ctc_pause = "",
-            object ctc_timedpause = null, string ctc_position = "")
-        {
-            var result = new Dictionary<string, DataValue>()
-            {
-                {"name", new DataValue(name) },
-                {"image", new DataValue(image) },
-                {"voice_tag", new DataValue(voice_tag) },
-                {"what_prefix", new DataValue(what_prefix) },
-                {"what_suffix", new DataValue(what_suffix) },
-                {"who_prefix", new DataValue(who_prefix) },
-                {"who_suffix", new DataValue(who_suffix) },
-                {"dynamic", new DataValue(dynamic) },
-                {"condition", new DataValue(condition) },
-                {"interact", new DataValue(interact) },
-                {"advance", new DataValue(advance) },
-                {"mode", new DataValue(mode) },
-                {"screen", new DataValue(screen) },
-                {"ctc", new DataValue(ctc) },
-                {"ctc_pause", new DataValue(ctc_pause) },
-                {"ctc_timedpause", new DataValue(ctc_timedpause) },
-                {"ctc_position", new DataValue(ctc_position) },
-            };
-            if (null != kind)
-            {
-                foreach (var entry in kind)
-                {
-                    if (result.ContainsKey(entry.Key))
-                    {
-                        result.Remove(entry.Key);
-                        result.Add(entry.Key, entry.Value);
-                    }
-                }
-            }
-            return result;
-        }
-
-        public bool hasattr(object context, string attr)
-        {
-            if (context is Dictionary<string, DataValue> dict)
-            {
-                return dict.ContainsKey(attr);
-            }
-            return false;
-        }
-
-        public static void StubCalls(RenpyExecutionContext context)
-        {
-            // make sure context looks to us for function resolution first
-            var m_LibObjects = PatchRenpyScriptExecution.GetPrivateField<RenpyExecutionContext, object[]>(context, "m_LibObjects");
-            if (!m_LibObjects.Any(o => o.GetType() == typeof(CallStubber)))
-            {
-                object[] newObjects = new object[m_LibObjects.Length + 1];
-                newObjects[0] = instance;
-                m_LibObjects.CopyTo(newObjects, 1);
-                PatchRenpyScriptExecution.SetPrivateField(context, "m_LibObjects", newObjects);
-            }
-
-            context.SetVariableObject("Character", new FunctionRedirect(instance, "Character"));
-            context.AddScope("gui");
-            context.SetVariableObject("gui.init", new FunctionRedirect(instance, "gui_init"));
-            context.AddScope("store");
         }
     }
 }
