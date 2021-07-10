@@ -13,13 +13,14 @@ namespace TestDDLCMod
         private IContextControl contextControl;
 
         public void gui_init(int a, int b) { }
-        public bool hasattr(object context, string attr)
+        public bool hasattr(string ctx, string attr)
         {
-            if (context is Dictionary<string, DataValue> dict)
+            var fullname = attr;
+            if (ctx != "store")
             {
-                return dict.ContainsKey(attr);
+                fullname = ctx.Substring("store.".Length) + "." + attr;
             }
-            return false;
+            return context.TryGetVariableObject(fullname, out object _);
         }
 
         public class Character
@@ -70,9 +71,9 @@ namespace TestDDLCMod
             { }
         }
 
-        public class ParameterizedText : RenpyStandardProxyLib.Text
+        public class Text : RenpyStandardProxyLib.Text
         {
-            public ParameterizedText(string style = "default", string blgrad = "",
+            public Text(string style = "default", string blgrad = "",
                 string brgrad = "", string caret = "", float cps = 0, float size = 0, string tlgrad = "",
                 string trgrad = "", float xalign = 0, float yalign = 0, float xpos = 0, float ypos = 0) :
                 base(CollectParameters(style, blgrad, brgrad, caret, cps, size, tlgrad, trgrad, xalign, yalign, xpos, ypos))
@@ -96,6 +97,14 @@ namespace TestDDLCMod
                 if (ypos != 0) parameters.Add(new RenpyCallParameter("ypos", ypos.ToString()));
                 return parameters.ToArray();
             }
+        }
+
+        public class ParameterizedText : Text { }
+
+        public class LiveTile : RenpyStandardProxyLib.Image
+        {
+            public LiveTile(string filename, float xalign = 0.5f, float yalign = 1) : base(filename, xalign, yalign)
+            { }
         }
 
         public void SetupProxyLib(IContextControl contextControl, ILoadSave loadSave)

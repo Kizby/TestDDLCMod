@@ -708,6 +708,16 @@ namespace TestDDLCMod
                         imgName = obj.Fields["imgname"].Tuple[0].String;
                     }
 
+                    var rawExpression = ExtractPyExpr(obj.Fields["code"]);
+                    if (rawExpression.Contains("Composite("))
+                    {
+                        // Composites are apparently evaluated later? Just pass along the string
+                        var fullname = bundle + " " + imgName;
+                        block = new RenpyBlock(fullname);
+                        block.Contents.Add(new RenpyLoadImage(fullname, "images/" + rawExpression));
+                        break;
+                    }
+
                     var actual = ExecutePython(obj, context);
                     var characters = context.script.Characters;
                     if (characters.Contains(bundle))
@@ -719,6 +729,23 @@ namespace TestDDLCMod
                     else if (actual.IsObject<RenpyStandardProxyLib.Text>())
                     {
                         // made the block in the assignment
+                    }
+                    else if (actual.IsObject<RenpyStandardProxyLib.Image>())
+                    {
+                        // need to make a block
+                        var image = actual.GetObjectAs<RenpyStandardProxyLib.Image>();
+                        var fullname = bundle + " " + imgName;
+                        block = new RenpyBlock(fullname);
+                        block.Contents.Add(new RenpyLoadImage(fullname, image.filename));
+                        if (image is Mod_ProxyLib.LiveTile tiledImage)
+                        {
+                            // fuck, iunno, how many times do we need to tile to fill the screen?
+                            block.Contents.Add(new RenpyImmediateTransform("xtile 10 ytile 10"));
+                        }
+                    }
+                    else if (actual.GetDataType() == DataType.ObjectRef)
+                    {
+                        Debug.LogWarning("Need to handle image expression of type: " + actual.GetObject().GetType());
                     }
                     else
                     {
@@ -1113,9 +1140,8 @@ namespace TestDDLCMod
                                 var call = instructions[instructions.Count - 1];
                                 var callName = expression.constantStrings[call.argumentIndex];
                                 var newCallName = "_screen_" + callName;
-                                call.argumentIndex = expression.constantStrings.Count;
+                                call.argumentIndex = expression.AddConstantValue(newCallName);
                                 instructions[instructions.Count - 1] = call;
-                                expression.constantStrings.Add(newCallName);
                                 container.Add(new RenpyStandardProxyLib.Expression(expression, true));
                                 break;
                             }
@@ -1143,9 +1169,8 @@ namespace TestDDLCMod
                                 var call = instructions[instructions.Count - 1];
                                 var callName = expression.constantStrings[call.argumentIndex];
                                 var newCallName = "_screen_" + callName;
-                                call.argumentIndex = expression.constantStrings.Count;
+                                call.argumentIndex = expression.AddConstantValue(newCallName);
                                 instructions[instructions.Count - 1] = call;
-                                expression.constantStrings.Add(newCallName);
                                 container.Add(new RenpyStandardProxyLib.Expression(expression, true));
 
                                 // need to hide window and wait for the call to finish now

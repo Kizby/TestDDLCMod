@@ -166,7 +166,7 @@ namespace TestDDLCMod
                     characters.Add(____variableName, character.value);
                 }
             }
-            else if (dataValue.IsObject<Mod_ProxyLib.ParameterizedText>())
+            else if (dataValue.IsObject<Mod_ProxyLib.Text>())
             {
                 var script = (ctx as RenpyExecutionContext).script;
                 var blocks = script.Blocks;
@@ -210,6 +210,50 @@ namespace TestDDLCMod
                 ___m_LibObjects.CopyTo(newObjects, 1);
                 ___m_LibObjects = newObjects;
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(NodeFunctionCall))]
+    public class HandlePythonBuiltins
+    {
+        [HarmonyPatch("Eval")]
+        public static bool Prefix(string ____functionName, Node[] ____arguments, Dictionary<string, Node> ____namedArguments, IContext ctx, ref DataValue __result)
+        {
+            switch (____functionName)
+            {
+                case "hasattr":
+                    fixupHasAttr(____functionName, ____arguments, ____namedArguments);
+                    break;
+                default:
+                    break;
+            }
+            return true;
+        }
+        [HarmonyPatch("Compile")]
+        public static bool Prefix(string ____functionName, Node[] ____arguments, Dictionary<string, Node> ____namedArguments, CompiledExpression expression)
+        {
+            switch (____functionName)
+            {
+                case "hasattr":
+                    fixupHasAttr(____functionName, ____arguments, ____namedArguments);
+                    break;
+                default:
+                    break;
+            }
+            return true;
+        }
+
+        public static void fixupHasAttr(string name, Node[] arguments, Dictionary<string, Node> namedArguments)
+        {
+            if (arguments.Length != 2 || namedArguments != null)
+                return;
+            var rawScope = arguments[0];
+            if (!(rawScope is NodeVariable))
+            {
+                return;
+            }
+            // not actually a variable, but a reference to a scope
+            arguments[0] = new NodeString((rawScope as NodeVariable).VariableName);
         }
     }
 
