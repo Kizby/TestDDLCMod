@@ -1,9 +1,13 @@
 ﻿using RenpyParser;
 using RenpyParser.ProxyLib;
+using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using SimpleExpressionEngine;
+using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
+using System.Reflection;
+using UnityEngine;
 
 namespace TestDDLCMod
 {
@@ -107,6 +111,54 @@ namespace TestDDLCMod
             { }
         }
 
+        public class SnowBlossom : IDisplayable
+        {
+            public SnowBlossom(object d, float count = 100, object xspeed = null, object yspeed = null, float start = 0, bool fast = false, bool horizontal = false)
+            {
+                // stub for now
+            }
+
+            public bool Complete { get; private set; }
+
+            public void Apply(IContext context)
+            {
+            }
+
+            public bool Immediate(GameObject gameObject, CurrentTransform currentTransform)
+            {
+                return true;
+            }
+
+            public IEnumerator Update(GameObject gameObject, CurrentTransform currentTransform)
+            {
+                yield return null;
+            }
+        }
+
+        public class Fixed : IDisplayable
+        {
+            public Fixed(params object[] elements)
+            {
+                // stub for now
+            }
+
+            public bool Complete { get; private set; }
+
+            public void Apply(IContext context)
+            {
+            }
+
+            public bool Immediate(GameObject gameObject, CurrentTransform currentTransform)
+            {
+                return true;
+            }
+
+            public IEnumerator Update(GameObject gameObject, CurrentTransform currentTransform)
+            {
+                yield return null;
+            }
+        }
+
         public void SetupProxyLib(IContextControl contextControl, ILoadSave loadSave)
         {
             context = Renpy.CurrentContext;
@@ -114,6 +166,8 @@ namespace TestDDLCMod
 
             context.AddScope("gui");
             context.SetVariableObject("gui.init", new FunctionRedirect(this, "gui_init"));
+            context.SetVariableObject("pass", null); // easier than actually making the python interpreter tokenize this
+            context.SetVariableObject("nvl", new CharacterData()); // might special case this later, but stub for now
         }
     }
 }

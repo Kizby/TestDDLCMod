@@ -714,6 +714,7 @@ namespace TestDDLCMod
                         // Composites are apparently evaluated later? Just pass along the string
                         var fullname = bundle + " " + imgName;
                         block = new RenpyBlock(fullname);
+                        block.callParameters = new RenpyCallParameter[0];
                         block.Contents.Add(new RenpyLoadImage(fullname, "images/" + rawExpression));
                         break;
                     }
@@ -736,6 +737,7 @@ namespace TestDDLCMod
                         var image = actual.GetObjectAs<RenpyStandardProxyLib.Image>();
                         var fullname = bundle + " " + imgName;
                         block = new RenpyBlock(fullname);
+                        block.callParameters = new RenpyCallParameter[0];
                         block.Contents.Add(new RenpyLoadImage(fullname, image.filename));
                         if (image is Mod_ProxyLib.LiveTile tiledImage)
                         {
@@ -751,8 +753,12 @@ namespace TestDDLCMod
                     {
                         // need to make a block
                         var fullname = bundle + " " + imgName;
-                        block = new RenpyBlock(fullname);
-                        block.Contents.Add(new RenpyLoadImage(fullname, actual.GetString()));
+                        if (!context.script.Blocks.Contains(fullname))
+                        {
+                            block = new RenpyBlock(fullname);
+                            block.callParameters = new RenpyCallParameter[0];
+                            block.Contents.Add(new RenpyLoadImage(fullname, actual.GetString()));
+                        }
                     }
                     break;
                 default:

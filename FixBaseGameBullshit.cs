@@ -177,6 +177,7 @@ namespace TestDDLCMod
                     var rawBlocks = PatchRenpyScriptExecution.GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
                     var rawBlockEntryPoints = PatchRenpyScriptExecution.GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
                     var block = new RenpyBlock(label);
+                    block.callParameters = new RenpyCallParameter[0];
 
                     // just stub it for now
                     rawBlocks.Add(label, block);
@@ -257,6 +258,35 @@ namespace TestDDLCMod
         }
     }
 
+    [HarmonyPatch(typeof(ExpressionReflectionContext), "ComposeReflectionParameters")]
+    public static class HandleParamsArguments
+    {
+        public static void Prefix(ParameterInfo[] parametersInfo, ref DataValue[] arguments)
+        {
+            if (parametersInfo.Length == 0)
+            {
+                return;
+            }
+            var maybeParams = parametersInfo[parametersInfo.Length - 1];
+            if (maybeParams.IsDefined(typeof(ParamArrayAttribute), false))
+            {
+                // actually a params parameter, so collect the remaining arguments in an array
+                var newArguments = new List<DataValue>();
+                for (var i = 0; i < parametersInfo.Length - 1; ++i)
+                {
+                    newArguments.Add(arguments[i]);
+                }
+                var actualParams = new List<DataValue>();
+                for (var i = parametersInfo.Length - 1; i < arguments.Length; ++i)
+                {
+                    actualParams.Add(arguments[i]);
+                }
+                newArguments.Add(DataValue.ComposeArray(actualParams.ToArray()));
+                arguments = newArguments.ToArray();
+            }
+        }
+    }
+
 
     [HarmonyPatch(typeof(OneLinePython), "Parse")]
     public static class LetMeHandleSyntaxExceptions
@@ -301,11 +331,13 @@ namespace TestDDLCMod
     [HarmonyPatch(typeof(RenpyCallstack), "Next")]
     public static class LogLines
     {
+        static Line lastLine = null;
         static void Postfix(Line __result)
         {
-            if (__result != null && !(__result is PlaceholderLine))
+            if (__result != null && !(__result is PlaceholderLine) && __result != lastLine)
             {
                 Debug.Log("Line: " + __result.ToString());
+                lastLine = __result;
             }
         }
     }
