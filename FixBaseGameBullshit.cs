@@ -7,6 +7,7 @@ using RenPyParser.VGPrompter.DataHolders;
 using SimpleExpressionEngine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using UnityEngine;
@@ -186,6 +187,29 @@ namespace TestDDLCMod
             dataValue.ResetData();
             __result = dataValue;
             return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(RenpyExecutionContext), "InitializeContext")]
+    public class AddModProxyLib
+    {
+        public static void Prefix(ref object[] ___m_LibObjects)
+        {
+            if (!Mod.IsModded())
+            {
+                if (___m_LibObjects.Any(o => o.GetType() == typeof(Mod_ProxyLib)))
+                {
+                    Debug.LogWarning("Mod_ProxyLib still loaded in unmodded context!");
+                }
+                return;
+            }
+            if (!___m_LibObjects.Any(o => o.GetType() == typeof(Mod_ProxyLib)))
+            {
+                object[] newObjects = new object[___m_LibObjects.Length + 1];
+                newObjects[0] = new Mod_ProxyLib(); // check our proxies first to simplify overriding behavior
+                ___m_LibObjects.CopyTo(newObjects, 1);
+                ___m_LibObjects = newObjects;
+            }
         }
     }
 

@@ -1,4 +1,5 @@
 ﻿using RenpyParser;
+using RenpyParser.ProxyLib;
 using RenPyParser.VGPrompter.DataHolders;
 using SimpleExpressionEngine;
 using System.Collections.Generic;
@@ -6,14 +7,10 @@ using System.Linq;
 
 namespace TestDDLCMod
 {
-    public class Mod_ProxyLib
+    public class Mod_ProxyLib : IRenpyProxyLib
     {
-        private RenpyExecutionContext context;
-
-        public Mod_ProxyLib(RenpyExecutionContext context)
-        {
-            this.context = context;
-        }
+        private IContextAccess context;
+        private IContextControl contextControl;
 
         public void gui_init(int a, int b) { }
         public bool hasattr(object context, string attr)
@@ -101,21 +98,13 @@ namespace TestDDLCMod
             }
         }
 
-        public static void MockCalls(RenpyExecutionContext context)
+        public void SetupProxyLib(IContextControl contextControl, ILoadSave loadSave)
         {
-            var mocker = new Mod_ProxyLib(context);
+            context = Renpy.CurrentContext;
+            this.contextControl = contextControl;
 
-            // make sure context looks to us for function and constructor resolution first
-            var m_LibObjects = PatchRenpyScriptExecution.GetPrivateField<RenpyExecutionContext, object[]>(context, "m_LibObjects");
-            if (!m_LibObjects.Any(o => o.GetType() == typeof(Mod_ProxyLib)))
-            {
-                object[] newObjects = new object[m_LibObjects.Length + 1];
-                newObjects[0] = mocker;
-                m_LibObjects.CopyTo(newObjects, 1);
-                PatchRenpyScriptExecution.SetPrivateField(context, "m_LibObjects", newObjects);
-            }
             context.AddScope("gui");
-            context.SetVariableObject("gui.init", new FunctionRedirect(mocker, "gui_init"));
+            context.SetVariableObject("gui.init", new FunctionRedirect(this, "gui_init"));
         }
     }
 }

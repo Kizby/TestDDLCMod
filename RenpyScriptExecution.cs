@@ -90,9 +90,6 @@ namespace TestDDLCMod
                 }
             }
 
-            // some renpy built-in methods need to be mocked
-            Mod_ProxyLib.MockCalls(context);
-
             foreach (var earlyPython in Mod.ActiveMod.EarlyPython)
             {
                 ExecutePython(earlyPython, context);
