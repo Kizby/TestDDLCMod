@@ -110,6 +110,60 @@ namespace TestDDLCMod
         }
     }
 
+    // teach parser how to handle commas at the end of parameter lists
+    [HarmonyPatch(typeof(Parser))]
+    public static class EnhanceParseArguments
+    {
+        // a single static stack would *probably* be fine, but contention between threads would
+        // be a nightmare to debug
+        static Dictionary<Parser, Stack<Token>> closeTokens = new Dictionary<Parser, Stack<Token>>();
+        [HarmonyPatch("ParseIdentifier")]
+        static void Prefix(Parser __instance, Node classObjectNode)
+        {
+            if (!closeTokens.ContainsKey(__instance))
+            {
+                closeTokens[__instance] = new Stack<Token>();
+            }
+            closeTokens[__instance].Push(Token.CloseParens);
+        }
+        [HarmonyPatch("ParseIdentifier")]
+        static void Postfix(Parser __instance, Node classObjectNode)
+        {
+            closeTokens[__instance].Pop();
+        }
+
+        [HarmonyPatch("ParseArrayDefinition")]
+        static void Prefix(Parser __instance)
+        {
+            if (!closeTokens.ContainsKey(__instance))
+            {
+                closeTokens[__instance] = new Stack<Token>();
+            }
+            closeTokens[__instance].Push(Token.CloseBracket);
+        }
+        [HarmonyPatch("ParseArrayDefinition")]
+        static void Postfix(Parser __instance)
+        {
+            closeTokens[__instance].Pop();
+        }
+
+        [HarmonyPatch("ParseExpressionRoot")]
+        static void Postfix(Parser __instance, bool __state)
+        {
+            var tokenizer = PatchRenpyScriptExecution.GetPrivateField<Parser, Tokenizer>(__instance, "_tokenizer");
+            var parsingParameters = (bool)typeof(Tokenizer).GetField("parsingParameters", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(tokenizer);
+            if (parsingParameters && tokenizer.Token == Token.Comma)
+            {
+                // if the subsequent token is the close token, eat the comma so
+                // we don't try to parse another arg
+                if (tokenizer.LookAhead(1).Token == closeTokens[__instance].Peek())
+                {
+                    tokenizer.NextToken();
+                }
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(Tokenizer), "CreateNewToken")]
     public static class EnhanceTokenizer
     {
@@ -258,9 +312,10 @@ namespace TestDDLCMod
         }
     }
 
-    [HarmonyPatch(typeof(ExpressionReflectionContext), "ComposeReflectionParameters")]
+    [HarmonyPatch(typeof(ExpressionReflectionContext))]
     public static class HandleParamsArguments
     {
+        [HarmonyPatch("ComposeReflectionParameters")]
         public static void Prefix(ParameterInfo[] parametersInfo, ref DataValue[] arguments)
         {
             if (parametersInfo.Length == 0)
@@ -283,6 +338,45 @@ namespace TestDDLCMod
                 }
                 newArguments.Add(DataValue.ComposeArray(actualParams.ToArray()));
                 arguments = newArguments.ToArray();
+                if (arguments.Length != parametersInfo.Length)
+                {
+                    Debug.LogWarning("Failed to fixup variadic arguments!");
+                    Debug.LogWarning("parameters: " + parametersInfo.Join(p => p.ParameterType.ToString()));
+                    Debug.LogWarning("arguments: " + arguments.Join(a => a.GetSystemType().ToString()));
+                }
+            }
+        }
+        // __state param is just to distinguish from above Prefix signature
+        [HarmonyPatch("CheckParametersLengthCompatibility")]
+        public static void Prefix(ParameterInfo[] parametersInfo, ref DataValue[] arguments, bool __state)
+        {
+            if (parametersInfo.Length == 0)
+            {
+                return;
+            }
+            var maybeParams = parametersInfo[parametersInfo.Length - 1];
+            if (maybeParams.IsDefined(typeof(ParamArrayAttribute), false))
+            {
+                Debug.Log("Adjusting arguments for params parameter");
+                // actually a params parameter, so collect the remaining arguments in an array
+                var newArguments = new List<DataValue>();
+                for (var i = 0; i < parametersInfo.Length - 1; ++i)
+                {
+                    newArguments.Add(arguments[i]);
+                }
+                var actualParams = new List<DataValue>();
+                for (var i = parametersInfo.Length - 1; i < arguments.Length; ++i)
+                {
+                    actualParams.Add(arguments[i]);
+                }
+                newArguments.Add(DataValue.ComposeArray(actualParams.ToArray()));
+                arguments = newArguments.ToArray();
+                if (arguments.Length != parametersInfo.Length)
+                {
+                    Debug.LogWarning("Failed to fixup variadic arguments!");
+                    Debug.LogWarning("parameters: " + parametersInfo.Join(p => p.ParameterType.ToString()));
+                    Debug.LogWarning("arguments: " + arguments.Join(a => a.GetSystemType().ToString()));
+                }
             }
         }
     }

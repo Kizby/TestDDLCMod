@@ -745,6 +745,10 @@ namespace TestDDLCMod
                             block.Contents.Add(new RenpyImmediateTransform("xtile 10 ytile 10"));
                         }
                     }
+                    else if (actual.IsObject<Mod_ProxyLib.ConditionSwitch>())
+                    {
+                        // stub for now
+                    }
                     else if (actual.GetDataType() == DataType.ObjectRef)
                     {
                         Debug.LogWarning("Need to handle image expression of type: " + actual.GetObject().GetType());

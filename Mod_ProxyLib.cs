@@ -6,7 +6,6 @@ using SimpleExpressionEngine;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
 using UnityEngine;
 
 namespace TestDDLCMod
@@ -156,6 +155,78 @@ namespace TestDDLCMod
             public IEnumerator Update(GameObject gameObject, CurrentTransform currentTransform)
             {
                 yield return null;
+            }
+        }
+
+        public class ConditionSwitch : IDisplayable
+        {
+            bool predict_all { get; }
+            readonly List<Condition> conditions = new List<Condition>();
+
+            public ConditionSwitch(object predict_all, params object[] args)
+            {
+                this.predict_all = predict_all != null && (bool)predict_all;
+                for (var i = 0; i < args.Length; i += 2)
+                {
+                    var rawDisplayable = args[i + 1];
+                    IDisplayable displayable;
+                    if (rawDisplayable is string str)
+                    {
+                        displayable = new RenpyLoadImage(str, str);
+                    }
+                    else
+                    {
+                        displayable = rawDisplayable as IDisplayable;
+                    }
+                    conditions.Add(new Condition()
+                    {
+                        condition = args[i] as string,
+                        displayable = displayable,
+                    });
+                }
+                Debug.Log("Building a ConditionSwitch");
+                Debug.Log(Environment.StackTrace);
+            }
+            public ConditionSwitch(params object[] args) : this(null, args)
+            { }
+
+            public bool Complete { get; private set; }
+
+
+            public void Apply(IContext context)
+            {
+            }
+            public bool Immediate(GameObject gameObject, CurrentTransform currentTransform)
+            {
+                Complete = false;
+                bool displayed = false;
+                foreach (var condition in conditions)
+                {
+                    if (ExpressionRuntime.Execute(SimpleExpressionEngine.Parser.Compile(condition.condition)).GetBool())
+                    {
+                        if (!displayed)
+                        {
+                            condition.displayable.Immediate(gameObject, currentTransform);
+                            displayed = true;
+                            if (!predict_all)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
+                Complete = true;
+                return false;
+            }
+
+            public IEnumerator Update(GameObject gameObject, CurrentTransform currentTransform)
+            {
+                yield return null;
+            }
+            public struct Condition
+            {
+                public string condition;
+                public IDisplayable displayable;
             }
         }
 
