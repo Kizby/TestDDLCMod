@@ -45,11 +45,11 @@ namespace TestDDLCMod
                 }
             }
             var filename = Path.GetFileNameWithoutExtension(unbundledPath);
-            //Debug.Log("Parsing " + filename);
-            if (filename != "yuri_eyesfull.cy")
+            Debug.Log("Parsing " + filename);
+            /*if (filename != "bgm-coarse.cy")
             {
                 return;
-            }
+            }*/
             using (var stream = new FileStream(unbundledPath, FileMode.Open))
             {
                 /*var decoder = new LZ4Decoder();
@@ -126,9 +126,9 @@ namespace TestDDLCMod
             Expect("2019.4.20f1"); // engineVersion
             Expect(stream.Length);
             var compressedSize = GetInt(); // CompressedBlocksInfoSize
-            Debug.Log($"Compressed blockinfo size: {compressedSize:X}");
+            //Debug.Log($"Compressed blockinfo size: {compressedSize:X}");
             var blocksInfoSize = GetInt(); // UncompressedBlocksInfoSize
-            Debug.Log($"Uncompressed blockinfo size: {blocksInfoSize:X}");
+            //Debug.Log($"Uncompressed blockinfo size: {blocksInfoSize:X}");
             Expect(0x43); // BundleFlags (BlockAndDirectoryInfoCombined + CompressionTypeMask=3[Lz4HC])
             while (stream.Position % 16 != 0)
             {
@@ -137,17 +137,114 @@ namespace TestDDLCMod
 
             byte[] blockInfo = new byte[blocksInfoSize];
             LZ4Decoder.Decode(stream, compressedSize, blockInfo);
-            DumpBytes(blockInfo);
+            //DumpBytes(blockInfo);
             headerSize = stream.Position;
 
-            Stream outerStream = stream;
+            ParseBlockInfo(blockInfo);
+            ParseNodes();
+        }
+
+        private void ParseNodes()
+        {
+            //for each Node
+            // offset is into decoded file
+            for (int nodeIndex = 0; nodeIndex < nodes.Length; nodeIndex++)
+            {
+                NodeSpec node = nodes[nodeIndex];
+                node.startBlock = blocks.Length;
+                for (var i = 0; i < blocks.Length; ++i)
+                {
+                    if (blocks[i].offset == node.offset)
+                    {
+                        node.startBlock = i;
+                        break;
+                    }
+                    else if (blocks[i].offset > node.offset)
+                    {
+                        node.startBlock = i - 1;
+                        break;
+                    }
+                }
+
+                node.endBlock = blocks.Length;
+                for (var i = node.startBlock; i < blocks.Length; ++i)
+                {
+                    if (blocks[i].offset - blocks[node.startBlock].offset >= node.size)
+                    {
+                        node.endBlock = i;
+                        break;
+                    }
+                }
+
+                Debug.Log($"Node {nodeIndex,2}: {node}");
+                if (node.startBlock >= blocks.Length || node.endBlock < node.startBlock)
+                {
+                    Debug.LogError($"wtf, weird node offset, size: {node.offset}, {node.size}");
+                }
+                if (node.size > int.MaxValue)
+                {
+                    Debug.Log($"Too big to extract!");
+                    continue;
+                }
+
+                var nodeBytes = new byte[node.size];
+                {
+                    var nodeBytesPos = 0;
+                    var nodeBytesLeft = nodeBytes.Length;
+                    var blockPos = (int)(node.offset - blocks[node.startBlock].offset);
+                    stream.Position = blocks[node.startBlock].fileOffset;
+                    for (var i = node.startBlock; i < node.endBlock; ++i)
+                    {
+                        var toCopy = Math.Min(blocks[i].uncompressed - blockPos, nodeBytesLeft);
+                        switch (blocks[i].flags)
+                        {
+                            case 0:
+                                // uncompressed
+                                stream.Position += blockPos;
+                                stream.Read(nodeBytes, nodeBytesPos, toCopy);
+                                break;
+                            case 3:
+                                // lz4 compressed
+                                if (blockPos > 0 || nodeBytesLeft < blocks[i].uncompressed)
+                                {
+                                    var blockBytes = new byte[blocks[i].uncompressed];
+                                    LZ4Decoder.Decode(stream, blocks[i].compressed, blockBytes);
+                                    Array.Copy(blockBytes, blockPos, nodeBytes, nodeBytesPos, toCopy);
+                                }
+                                else
+                                {
+                                    // can decode directly into nodeBytes
+                                    LZ4Decoder.Decode(stream, blocks[i].compressed, nodeBytes, nodeBytesPos);
+                                }
+                                break;
+                            default:
+                                Debug.LogError($"Unrecognized block flags for block {i} ${blocks[i].flags:X}");
+                                break;
+                        }
+
+                        blockPos = 0; // copying from the start of the next block if there is one
+                        nodeBytesPos += toCopy;
+                        nodeBytesLeft -= toCopy;
+                    }
+                }
+                //DumpBytes(nodeBytes);
+            }
+        }
+
+        private void ParseBlockInfo(byte[] blockInfo)
+        {
+            var outerStream = stream;
             using (stream = new MemoryStream(blockInfo))
             {
                 int[] hash = new int[4];
                 GetIntArray(hash);
-                Debug.Log($"Hash:{hash[0],8:X}{hash[1],8:X}{hash[2],8:X}{hash[3],8:X}".Replace(' ', '0'));
+                var hashString = $"{hash[0],8:X}{hash[1],8:X}{hash[2],8:X}{hash[3],8:X}".Replace(' ', '0');
+                if (hashString != "00000000000000000000000000000000")
+                {
+                    Debug.Log($"Hash:{hashString}");
+                }
                 int blockArraySize = GetInt();
-                Debug.Log($"Block array size: {blockArraySize}");
+                //Debug.Log($"Block array size: {blockArraySize}");
 
                 blocks = new StorageBlockSpec[blockArraySize];
                 long totalCompressed = 0;
@@ -159,7 +256,7 @@ namespace TestDDLCMod
                     blocks[i].uncompressed = GetInt();
                     blocks[i].compressed = GetInt();
                     blocks[i].flags = GetShort();
-                    Debug.Log($"Block {i}: {blocks[i]}");
+                    //Debug.Log($"Block {i,5}: {blocks[i]}");
 
                     totalCompressed += blocks[i].compressed;
                     totalUncompressed += blocks[i].uncompressed;
@@ -170,7 +267,7 @@ namespace TestDDLCMod
                 }
 
                 int nodeArraySize = GetInt();
-                Debug.Log($"Node array size is: {nodeArraySize}");
+                //Debug.Log($"Node array size is: {nodeArraySize}");
                 nodes = new NodeSpec[nodeArraySize];
                 for (var i = 0; i < nodeArraySize; ++i)
                 {
@@ -178,7 +275,7 @@ namespace TestDDLCMod
                     nodes[i].size = GetLong();
                     nodes[i].index = GetInt();
                     nodes[i].pathOrigin = GetString();
-                    Debug.Log($"Node: {nodes[i]}");
+                    //Debug.Log($"Node {i,2}: {nodes[i]}");
                 }
                 if (stream.Position != stream.Length)
                 {
@@ -186,59 +283,6 @@ namespace TestDDLCMod
                 }
             }
             stream = outerStream;
-
-            //for each Node
-            // offset is into decoded file
-            foreach (var node in nodes)
-            {
-                Debug.Log($"Node {node.pathOrigin}:");
-                var startBlock = blocks.Length;
-                for (var i = 0; i < blocks.Length; ++i)
-                {
-                    if (blocks[i].offset == node.offset)
-                    {
-                        startBlock = i;
-                        break;
-                    }
-                    else if (blocks[i].offset > node.offset)
-                    {
-                        startBlock = i - 1;
-                        break;
-                    }
-                }
-
-                var endBlock = startBlock + 1;
-                for (var i = startBlock; i < blocks.Length; ++i)
-                {
-                    if (blocks[i].offset - blocks[startBlock].offset >= node.size)
-                    {
-                        endBlock = i;
-                    }
-                }
-
-                Debug.Log($"startBlock: {startBlock}, endBlock: {endBlock}");
-                if (startBlock >= blocks.Length || endBlock < startBlock) {
-                    Debug.LogError($"wtf, weird node offset, size: {node.offset}, {node.size}");
-                }
-
-                var nodeBytes = new byte[node.size];
-                {
-                    var nodeBytesPos = 0;
-                    var nodeBytesLeft = nodeBytes.Length;
-                    var blockPos = (int)(node.offset - blocks[startBlock].offset);
-                    stream.Position = blocks[startBlock].fileOffset;
-                    for (var i = startBlock; i < endBlock; ++i)
-                    {
-                        var blockBytes = new byte[blocks[i].uncompressed];
-                        LZ4Decoder.Decode(stream, blocks[i].compressed, blockBytes);
-                        var toCopy = Math.Min(blockBytes.Length - blockPos, nodeBytesLeft);
-                        Array.Copy(blockBytes, blockPos, nodeBytes, nodeBytesPos, blockBytes.Length - blockPos);
-                        blockPos = 0; // copying from the start of the next block
-                        nodeBytesLeft -= toCopy;
-                    }
-                }
-                DumpBytes(nodeBytes);
-            }
         }
 
         private static void DumpBytes(byte[] blockInfo)
@@ -262,7 +306,7 @@ namespace TestDDLCMod
             public short flags;
             public long offset;
             public long fileOffset;
-            public override string ToString() => $"uncompressed:{uncompressed:X}, offset:{offset:X}, compressed:{compressed:X}, fileOffset:{fileOffset:X}, flags:{flags:X}";
+            public override string ToString() => $"uncompressed:{uncompressed,5:X}, offset:{offset,8:X}, compressed:{compressed,5:X}, fileOffset:{fileOffset,7:X}, flags:{flags:X}";
         }
         struct NodeSpec
         {
@@ -270,7 +314,9 @@ namespace TestDDLCMod
             public long size;
             public int index;
             public string pathOrigin;
-            public override string ToString() => $"offset:{offset:X}, size:{size:X}, index:{index}, pathOrigin:{pathOrigin}";
+            public int startBlock;
+            public int endBlock;
+            public override string ToString() => $"offset:{offset,8:X}, size:{size,8:X}, index:{index,2}, blocks:{$"{startBlock}-{endBlock - 1}",11}, pathOrigin:{pathOrigin}";
         }
 
         long GetLong()
@@ -438,10 +484,12 @@ namespace TestDDLCMod
 
     class LZ4Decoder
     {
-        public static void Decode(Stream inStream, int inLength, byte[] outBytes)
+        public static bool LogDecode = false;
+        public static void Decode(Stream inStream, int inLength, byte[] outBytes, int outOffset = 0)
         {
             var start = inStream.Position;
-            var outPos = 0;
+            var outPos = outOffset;
+            if (LogDecode) Debug.Log($"Starting decode: {inLength,7:X} bytes starting at {start,7:X}");
             while (true)
             {
                 var token = inStream.ReadByte();
@@ -469,6 +517,7 @@ namespace TestDDLCMod
                 {
                     throw new Exception("Too many literals");
                 }
+                if (LogDecode) Debug.Log($"{literalCount} literals");
                 inStream.Read(outBytes, outPos, literalCount);
                 outPos += literalCount;
                 if (inStream.Position == start + inLength)
@@ -476,8 +525,8 @@ namespace TestDDLCMod
                     return;
                 }
 
-                var offset = inStream.ReadByte();
-                if (offset == -1)
+                var lowOffset = inStream.ReadByte();
+                if (lowOffset == -1)
                 {
                     throw new Exception("Missing low offset");
                 }
@@ -486,7 +535,7 @@ namespace TestDDLCMod
                 {
                     throw new Exception("Missing high offset");
                 }
-                offset = (highOffset << 8) + offset;
+                var offset = ((byte)highOffset << 8) + (byte)lowOffset;
                 if (matchLength == 19)
                 {
                     int moreCount;
@@ -506,9 +555,19 @@ namespace TestDDLCMod
                 {
                     throw new Exception($"Trying to start match {-startMatch} bytes before start of buffer");
                 }
-                for (var i = startMatch; i < startMatch + matchLength; ++i)
+                if (LogDecode) Debug.Log($"Copying {matchLength} starting at {startMatch}");
+                if (startMatch + matchLength <= outPos)
                 {
-                    outBytes[outPos++] = outBytes[i];
+                    Array.Copy(outBytes, startMatch, outBytes, outPos, matchLength);
+                    outPos += matchLength;
+                }
+                else
+                {
+                    // overlapping match, just do it by hand
+                    for (var i = startMatch; i < startMatch + matchLength; ++i)
+                    {
+                        outBytes[outPos++] = outBytes[i];
+                    }
                 }
             }
         }
