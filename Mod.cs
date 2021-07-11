@@ -1,5 +1,6 @@
 ﻿using RenpyLauncher;
 using RenpyParser;
+using RenPyParser.AssetManagement;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -67,6 +68,16 @@ namespace TestDDLCMod
 
         public static void InitializeMods()
         {
+
+            // let's inspect the bundles
+            foreach (var bundleFile in Directory.GetFiles("Doki Doki Literature Club Plus_Data/StreamingAssets/AssetBundles/" + PathHelpers.GetPlatformForAssetBundles(Application.platform)))
+            {
+                if (bundleFile.EndsWith(".cy"))
+                {
+                    AssetBundler.Unbundle(bundleFile);
+                }
+            }
+
             string name = "Base Game";
             Directory.CreateDirectory(PersistentDataPath);
             Directory.CreateDirectory(LocalDataPath);

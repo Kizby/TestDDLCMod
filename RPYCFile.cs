@@ -58,6 +58,8 @@ namespace TestDDLCMod
                         break;
                     case "renpy.ast.Return":
                         break;
+                    case "renpy.ast.If":
+                        break;
                     default:
                         Debug.LogWarning("Unexpected top level statement: " + stmt.Name);
                         break;

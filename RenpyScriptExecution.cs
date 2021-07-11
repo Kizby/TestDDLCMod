@@ -76,20 +76,6 @@ namespace TestDDLCMod
                 return;
             }
 
-            // let's load all the assets into memory
-            foreach (var bundleFile in Directory.GetFiles("Doki Doki Literature Club Plus_Data/StreamingAssets/AssetBundles/" + PathHelpers.GetPlatformForAssetBundles(Application.platform)))
-            {
-                if (bundleFile.EndsWith(".cy"))
-                {
-                    var label = Path.GetFileNameWithoutExtension(bundleFile);
-                    if (label.StartsWith("label "))
-                    {
-                        var dependencies = GetPrivateField<ActiveLabelAssetBundles, ActiveAssetBundles>(Renpy.Resources as ActiveLabelAssetBundles, "m_ActiveAssetBundles");
-                        //dependencies.PerformLoadBundleAsync(label);
-                    }
-                }
-            }
-
             foreach (var earlyPython in Mod.ActiveMod.EarlyPython)
             {
                 ExecutePython(earlyPython, context);
