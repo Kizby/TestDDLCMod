@@ -76,6 +76,20 @@ namespace TestDDLCMod
                 return;
             }
 
+            // let's load all the bundles
+            /*
+            foreach (var bundleFile in Directory.GetFiles("Doki Doki Literature Club Plus_Data/StreamingAssets/AssetBundles/" + PathHelpers.GetPlatformForAssetBundles(Application.platform)))
+            {
+                if (bundleFile.EndsWith(".cy"))
+                {
+                    var filename = Path.GetFileNameWithoutExtension(bundleFile);
+                    if (filename.StartsWith("label "))
+                    {
+                        Renpy.Resources.ChangeLabel(filename.Substring("label ".Length));
+                    }
+                }
+            }*/
+
             foreach (var earlyPython in Mod.ActiveMod.EarlyPython)
             {
                 ExecutePython(earlyPython, context);
@@ -130,6 +144,7 @@ namespace TestDDLCMod
         private static DataValue ExecutePython(PythonObj python, RenpyExecutionContext context)
         {
             var rawExpression = ExtractPyExpr(python.Fields["code"]);
+            Log("Executing: " + rawExpression);
             try
             {
                 var expression = new CompiledExpression();

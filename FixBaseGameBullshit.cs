@@ -1,4 +1,4 @@
-using HarmonyLib;
+﻿using HarmonyLib;
 using RenpyLauncher;
 using RenpyParser;
 using RenPyParser.AssetManagement;
@@ -7,10 +7,12 @@ using RenPyParser.VGPrompter.DataHolders;
 using SimpleExpressionEngine;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using UnityEngine;
+using UnityPS;
 using Parser = SimpleExpressionEngine.Parser;
 
 namespace TestDDLCMod
@@ -452,4 +454,67 @@ namespace TestDDLCMod
             }
         }
     }
+
+    [HarmonyPatch(typeof(ExpressionReflectionContext), "CallMethodWithObject")]
+    public static class InspectCallMethod
+    {
+        public static void Prefix(object objRef, string name)
+        {
+            //Debug.Log("Calling " + name + " on a: " + objRef.GetType());
+        }
+    }
+
+    [HarmonyPatch(typeof(ActiveImage), "GetAssetFor")]
+    public static class InspectGetAssetFor
+    {
+        static void Prefix(string assetName)
+        {
+            Debug.Log("Getting asset: " + assetName);
+        }
+    }
+
+    [HarmonyPatch(typeof(RenpyMainBase), "OnLabel")]
+    class StubOnLabel
+    {
+        public static bool Prefix(CoroutineID id, string label, System.Collections.IEnumerator __result)
+        {
+            if (!Mod.IsModded())
+            {
+                return true;
+            }
+            Renpy.Resources.ChangeLabel(label);
+            CoroutineManager.UnregisterCoroutine(id);
+            __result = new object[0].GetEnumerator();
+            return false;
+        }
+    }
+    /*
+    [HarmonyPatch(typeof(ActiveLabelAssetBundles), "ChangeLabel", new Type[] { typeof(string) })]
+    public static class AdjustLabel
+    {
+        static void Postfix(ActiveLabelAssetBundles __instance, ref string label)
+        {
+            if (label == "PSA")
+            {
+                //DontUnloadBundles.Enabled = true;
+                //Renpy.Resources.ChangeLabel("ch1_main");
+                //Renpy.Resources.ChangeLabel("ch2_main");
+                //Renpy.Resources.ChangeLabel("ch4_main");
+            }
+            Debug.Log("Changing label to: " + label);
+        }
+    }*/
+
+    /*
+    [HarmonyPatch(typeof(RenpyExecutionContext), "ApplyParameters")]
+    public static class InspectApplyParameters
+    {
+        static void Prefix(RenpyCallParameter[] callParameters, RenpyBlock block, int blockLineNumber)
+        {
+            Debug.Log("In ApplyParameters");
+            Debug.Log("callParameters: " + callParameters.Length);
+            Debug.Log("block: " + block.Label);
+            Debug.Log("blockLineNumber: " + blockLineNumber);
+        }
+    }*/
 }

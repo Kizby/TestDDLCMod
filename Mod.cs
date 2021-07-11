@@ -25,6 +25,7 @@ namespace TestDDLCMod
         private static FileBrowserEntries BaseGameEntries;
         private static FileBrowserEntries BaseGameDefaultEntries;
         private static Mod _activeMod = new Mod("Base Game");
+        private static bool Initialized = false;
 
         // Apparently UnityPS just uses / rather than the system divider ;-;
         // so we confuse the base game if we do Path.Combine(PlatformManager.FileSystem.PersistentDataPath, "mods") on Windows
@@ -64,17 +65,25 @@ namespace TestDDLCMod
             }
         }
 
-        public static bool IsModded() => ActiveMod.Type != ModBrowserApp.ModBaseGameType;
+        public static bool IsModded()
+        {
+            InitializeMods();
+            return ActiveMod.Type != ModBrowserApp.ModBaseGameType;
+        }
 
         public static void InitializeMods()
         {
+            if (Initialized)
+            {
+                return;
+            }
 
-            // let's inspect the bundles
+            // inspect the bundles
             foreach (var bundleFile in Directory.GetFiles("Doki Doki Literature Club Plus_Data/StreamingAssets/AssetBundles/" + PathHelpers.GetPlatformForAssetBundles(Application.platform)))
             {
                 if (bundleFile.EndsWith(".cy"))
                 {
-                    AssetBundler.Unbundle(bundleFile);
+                    //AssetBundler.Unbundle(bundleFile);
                 }
             }
 
@@ -100,6 +109,7 @@ namespace TestDDLCMod
             BaseGameEntries = VirtualFileSystem.Entries;
             BaseGameDefaultEntries = GameObject.Find("LauncherMainCanvas").GetComponent<LauncherMain>().Entries;
             ActiveMod = new Mod(name);
+            Initialized = true;
         }
 
         public Mod(string name)
