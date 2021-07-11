@@ -1,18 +1,14 @@
 ﻿using HarmonyLib;
 using RenpyLauncher;
 using RenpyParser;
-using RenPyParser.AssetManagement;
-using RenPyParser.Images;
 using RenPyParser.VGPrompter.DataHolders;
 using SimpleExpressionEngine;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using UnityEngine;
-using UnityPS;
 using Parser = SimpleExpressionEngine.Parser;
 
 namespace TestDDLCMod
@@ -111,6 +107,39 @@ namespace TestDDLCMod
             return false;
         }
     }
+    [HarmonyPatch(typeof(Tokenizer), "CreateNewToken")]
+    public static class EnhanceTokenizer
+    {
+        public static readonly Token Colon = Token.None + 1;
+
+        static FieldInfo currentCharField = typeof(Tokenizer).GetField("_currentChar", BindingFlags.Instance | BindingFlags.NonPublic);
+        static MethodInfo nextCharMethod = typeof(Tokenizer).GetMethod("NextChar", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        static void Prefix(Tokenizer __instance, ref Tokenizer.TokenizerItem item, ref bool __state)
+        {
+            __state = false;
+            if ((bool)typeof(Tokenizer).GetField("eofReached", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(__instance))
+            {
+                return;
+            }
+            while (char.IsWhiteSpace((char)currentCharField.GetValue(__instance)))
+            {
+                nextCharMethod.Invoke(__instance, new object[0]);
+            }
+            if ((char)currentCharField.GetValue(__instance) == ':')
+            {
+                __state = true;
+                item._currentToken = Colon;
+            }
+        }
+        static void Postfix(Tokenizer __instance, ref bool __state)
+        {
+            if (__state)
+            {
+                nextCharMethod.Invoke(__instance, new object[0]);
+            }
+        }
+    }
 
     // teach parser how to handle commas at the end of parameter lists
     [HarmonyPatch(typeof(Parser))]
@@ -166,40 +195,8 @@ namespace TestDDLCMod
         }
     }
 
-    [HarmonyPatch(typeof(Tokenizer), "CreateNewToken")]
-    public static class EnhanceTokenizer
-    {
-        public static readonly Token Colon = Token.None + 1;
-
-        static FieldInfo currentCharField = typeof(Tokenizer).GetField("_currentChar", BindingFlags.Instance | BindingFlags.NonPublic);
-        static MethodInfo nextCharMethod = typeof(Tokenizer).GetMethod("NextChar", BindingFlags.Instance | BindingFlags.NonPublic);
-
-        static void Prefix(Tokenizer __instance, ref Tokenizer.TokenizerItem item, ref bool __state)
-        {
-            __state = false;
-            if ((bool)typeof(Tokenizer).GetField("eofReached", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(__instance))
-            {
-                return;
-            }
-            while (char.IsWhiteSpace((char)currentCharField.GetValue(__instance)))
-            {
-                nextCharMethod.Invoke(__instance, new object[0]);
-            }
-            if ((char)currentCharField.GetValue(__instance) == ':')
-            {
-                __state = true;
-                item._currentToken = Colon;
-            }
-        }
-        static void Postfix(Tokenizer __instance, ref bool __state)
-        {
-            if (__state)
-            {
-                nextCharMethod.Invoke(__instance, new object[0]);
-            }
-        }
-    }
-
+    // create blocks to handle variable assignments that will ultimately be handled as goto label's
+    // e.g. "s = new Character('sayori')" or "foo = new Text(bar)"
     [HarmonyPatch(typeof(NodeVariableAssign), "Eval")]
     public static class HandleCharacterDefinitions
     {
@@ -247,6 +244,7 @@ namespace TestDDLCMod
         }
     }
 
+    // make sure Mod_ProxyLib gets dibs on handling resolving shit
     [HarmonyPatch(typeof(RenpyExecutionContext), "InitializeContext")]
     public class AddModProxyLib
     {
@@ -270,6 +268,7 @@ namespace TestDDLCMod
         }
     }
 
+    // handle python calls that take type arguments rather than actuals
     [HarmonyPatch(typeof(NodeFunctionCall))]
     public class HandlePythonBuiltins
     {
@@ -314,6 +313,7 @@ namespace TestDDLCMod
         }
     }
 
+    // handle function calls to functions with a params argument
     [HarmonyPatch(typeof(ExpressionReflectionContext))]
     public static class HandleParamsArguments
     {
@@ -383,7 +383,7 @@ namespace TestDDLCMod
         }
     }
 
-
+    // rethrow SyntaxExceptions in the Parser so our code can handle them
     [HarmonyPatch(typeof(OneLinePython), "Parse")]
     public static class LetMeHandleSyntaxExceptions
     {
@@ -407,6 +407,7 @@ namespace TestDDLCMod
         }
     }
 
+    // log instructions as they're evaluated
     [HarmonyPatch(typeof(RenpyExecutionContext), "Jump")]
     public static class LogJumps
     {
@@ -423,7 +424,6 @@ namespace TestDDLCMod
             Debug.Log("Goto: " + block.Label);
         }
     }
-
     [HarmonyPatch(typeof(RenpyCallstack), "Next")]
     public static class LogLines
     {
@@ -438,6 +438,7 @@ namespace TestDDLCMod
         }
     }
 
+    // are we actually able to call these inline python calls?
     [HarmonyPatch(typeof(RenpyScript), "HandleInLinePython")]
     public static class InspectInLinePython
     {
@@ -454,67 +455,4 @@ namespace TestDDLCMod
             }
         }
     }
-
-    [HarmonyPatch(typeof(ExpressionReflectionContext), "CallMethodWithObject")]
-    public static class InspectCallMethod
-    {
-        public static void Prefix(object objRef, string name)
-        {
-            //Debug.Log("Calling " + name + " on a: " + objRef.GetType());
-        }
-    }
-
-    [HarmonyPatch(typeof(ActiveImage), "GetAssetFor")]
-    public static class InspectGetAssetFor
-    {
-        static void Prefix(string assetName)
-        {
-            Debug.Log("Getting asset: " + assetName);
-        }
-    }
-
-    [HarmonyPatch(typeof(RenpyMainBase), "OnLabel")]
-    class StubOnLabel
-    {
-        public static bool Prefix(CoroutineID id, string label, System.Collections.IEnumerator __result)
-        {
-            if (!Mod.IsModded())
-            {
-                return true;
-            }
-            Renpy.Resources.ChangeLabel(label);
-            CoroutineManager.UnregisterCoroutine(id);
-            __result = new object[0].GetEnumerator();
-            return false;
-        }
-    }
-    /*
-    [HarmonyPatch(typeof(ActiveLabelAssetBundles), "ChangeLabel", new Type[] { typeof(string) })]
-    public static class AdjustLabel
-    {
-        static void Postfix(ActiveLabelAssetBundles __instance, ref string label)
-        {
-            if (label == "PSA")
-            {
-                //DontUnloadBundles.Enabled = true;
-                //Renpy.Resources.ChangeLabel("ch1_main");
-                //Renpy.Resources.ChangeLabel("ch2_main");
-                //Renpy.Resources.ChangeLabel("ch4_main");
-            }
-            Debug.Log("Changing label to: " + label);
-        }
-    }*/
-
-    /*
-    [HarmonyPatch(typeof(RenpyExecutionContext), "ApplyParameters")]
-    public static class InspectApplyParameters
-    {
-        static void Prefix(RenpyCallParameter[] callParameters, RenpyBlock block, int blockLineNumber)
-        {
-            Debug.Log("In ApplyParameters");
-            Debug.Log("callParameters: " + callParameters.Length);
-            Debug.Log("block: " + block.Label);
-            Debug.Log("blockLineNumber: " + blockLineNumber);
-        }
-    }*/
 }

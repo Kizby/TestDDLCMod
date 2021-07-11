@@ -1,7 +1,6 @@
 using HarmonyLib;
 using RenpyParser;
 using RenPyParser;
-using RenPyParser.AssetManagement;
 using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using RenPyParser.VGPrompter.Script.Internal;

@@ -1,5 +1,5 @@
 ﻿using HarmonyLib;
-using RenpyLauncher;
+using RenPyParser.AssetManagement;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -84,10 +84,10 @@ namespace TestDDLCMod
                     Debug.LogWarning(e.ToString());
                 }
             }
-            Application.Quit();
+            //Application.Quit();
         }
     }
-
+    /*
     [HarmonyPatch(typeof(LauncherMain), "WantsToQuit")]
     class Quitter
     {
@@ -105,7 +105,7 @@ namespace TestDDLCMod
             __result = true;
             return false;
         }
-    }
+    }*/
 
     class AssetParser
     {
@@ -644,6 +644,120 @@ namespace TestDDLCMod
                 //Debug.Log($"MatchLength: {matchLength}");
                 outPos += matchLength;
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(ActiveAssetBundles))]
+    public static class DontUnloadBundles
+    {
+        [HarmonyPatch("LoadPermanentBundles")]
+        static bool Prefix(ActiveAssetBundles __instance, Dictionary<string, AssetBundle> ___m_ActiveAssetBundles, ActiveBundles ___m_ActiveBundles)
+        {
+            if (!Mod.IsModded())
+            {
+                return true;
+            }
+            // permanently load all chapter bundles
+            var PermanentBundles = new List<string>()
+            {
+                "gui",
+                "bg",
+                "cg",
+                "monika",
+                "yuri",
+                "natsuki",
+                "sayori",
+                "bgm-coarse",
+                "sfx-coarse",
+            };
+            foreach (var bundleFile in Directory.GetFiles("Doki Doki Literature Club Plus_Data/StreamingAssets/AssetBundles/" + PathHelpers.GetPlatformForAssetBundles(Application.platform)))
+            {
+                if (bundleFile.EndsWith(".cy"))
+                {
+                    var filename = Path.GetFileNameWithoutExtension(bundleFile);
+                    if (filename.StartsWith("label "))
+                    {
+                        PermanentBundles.Insert(0, filename);
+                    }
+                }
+            }
+            var gestaltDependencies = ScriptableObject.CreateInstance<LabelAssetBundleDependencies>();
+            var seenBundles = new HashSet<string>(PermanentBundles);
+            for (int i = 0; i < PermanentBundles.Count; i++)
+            {
+                var bundle = PermanentBundles[i];
+                if (!___m_ActiveAssetBundles.ContainsKey(bundle))
+                {
+                    Debug.Log($"Loading bundle: {bundle}");
+                    AccessTools.Method(typeof(ActiveAssetBundles), "LoadBundleSync").Invoke(__instance, new object[] { bundle });
+                }
+                var assetBundle = ___m_ActiveAssetBundles[bundle];
+                if (assetBundle == null)
+                {
+                    Debug.Log("Failed to load bundle!");
+                    continue;
+                }
+                ___m_ActiveBundles.ForceAdd(bundle);
+                foreach (var asset in assetBundle.GetAllAssetNames())
+                {
+                    gestaltDependencies.AddAsset(PathHelpers.SanitizePathToAddressableName(asset), bundle, $"Definitely Correct Path/{bundle}/{asset}");
+                }
+                foreach (var dependencies in assetBundle.LoadAllAssets<LabelAssetBundleDependencies>())
+                {
+                    dependencies.RequiredBundles.DoIf(seenBundles.Add, b => PermanentBundles.Insert(i + 1, b));
+                }
+            }
+            ActiveLabelAssetBundles labelBundles = AccessTools.StaticFieldRefAccess<ActiveLabelAssetBundles>(typeof(Renpy), "s_ActiveLabelAssetBundles");
+            AccessTools.Field(typeof(ActiveLabelAssetBundles), "<LabelAssetBundle>k__BackingField").SetValue(labelBundles, gestaltDependencies);
+            AccessTools.Field(typeof(ActiveLabelAssetBundles), "<HasLabelAssetBundleLoaded>k__BackingField").SetValue(labelBundles, true);
+
+            AccessTools.Field(typeof(ActiveAssetBundles), "PermanentHashCodes").SetValue(__instance, PermanentBundles.Select(s => s.GetHashCode()).ToArray());
+            AccessTools.Field(typeof(ActiveAssetBundles), "PermanentHashCodesLength").SetValue(__instance, PermanentBundles.Count());
+            return false;
+        }
+    }
+
+    // with assets for all labels loaded, we don't want label changes to them
+    [HarmonyPatch(typeof(ActiveLabelAssetBundles))]
+    public static class DontUnloadOnLabelChange
+    {
+        [HarmonyPatch("ChangeLabel", new Type[] { typeof(string) })]
+        static bool Prefix(ActiveLabelAssetBundles __instance, string label, ref bool __result)
+        {
+            if (!Mod.IsModded())
+            {
+                return true;
+            }
+            AccessTools.Field(typeof(ActiveLabelAssetBundles), "<ActiveLabel>k__BackingField").SetValue(__instance, label);
+            __result = true;
+            Debug.Log("Changing label to " + label);
+            //Debug.Log(Environment.StackTrace);
+            return false;
+        }
+        [HarmonyPatch("ChangeLabelSync", new Type[] { typeof(string) })]
+        static bool Prefix(ActiveLabelAssetBundles __instance, string label)
+        {
+            if (!Mod.IsModded())
+            {
+                return true;
+            }
+            AccessTools.Field(typeof(ActiveLabelAssetBundles), "<ActiveLabel>k__BackingField").SetValue(__instance, label);
+            Debug.Log("Changing label (sync) to " + label);
+            return false;
+        }
+        [HarmonyPatch("ClearCurrentLabelBundle")]
+        static bool Prefix()
+        {
+            if (!Mod.IsModded())
+            {
+                return true;
+            }
+            return false;
+        }
+        [HarmonyPatch("ValidateLoad")]
+        static void Postfix(string path, ref string bundleName)
+        {
+            Debug.Log($"Found {path} in {bundleName}");
         }
     }
 }
