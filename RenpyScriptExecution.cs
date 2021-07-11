@@ -566,7 +566,7 @@ namespace TestDDLCMod
             SubDepth();
         }
 
-        private static void LogExpression(CompiledExpression expression)
+        public static void LogExpression(CompiledExpression expression)
         {
             AddDepth();
             foreach (var instruction in expression.instructions)
@@ -714,11 +714,6 @@ namespace TestDDLCMod
                     Debug.Log("Trying to build transform " + obj.Fields["varname"].String);
                     break;
                 case "renpy.ast.Image":
-                    if (obj.Fields["atl"].Type != PythonObj.ObjType.NONE)
-                    {
-                        //Log("Need to handle an image with atl: " + obj.ToString());
-                        break;
-                    }
                     //Debug.Log(obj.ToString());
                     string bundle = "unbundled", imgName;
                     if (obj.Fields["imgname"].Tuple.Count > 1)
@@ -729,6 +724,17 @@ namespace TestDDLCMod
                     else
                     {
                         imgName = obj.Fields["imgname"].Tuple[0].String;
+                    }
+
+                    if (obj.Fields["atl"].Type != PythonObj.ObjType.NONE)
+                    {
+                        Log("Need to handle an image with atl: " + obj.ToString());
+                        // Placeholder block so we don't break later
+                        var fullname = bundle + " " + imgName;
+                        block = new RenpyBlock(fullname);
+                        block.callParameters = new RenpyCallParameter[0];
+                        block.Contents.Add(new RenpyReturn());
+                        break;
                     }
 
                     var rawExpression = ExtractPyExpr(obj.Fields["code"]);
@@ -865,7 +871,6 @@ namespace TestDDLCMod
                 case "renpy.ast.While":
                     var conditionString = ExtractPyExpr(obj.Fields["condition"]);
                     var condition = Parser.Compile(conditionString);
-                    condition.AddInstruction(InstructionType.Not); // since this is a goto unless, we need to negate the condition
                     var gotoStmt = new RenpyGoToLineUnless(conditionString, -1);
                     gotoStmt.CompiledExpression = condition;
                     container.Add(gotoStmt);
