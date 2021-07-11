@@ -1,6 +1,7 @@
 using HarmonyLib;
 using RenpyParser;
 using RenPyParser;
+using RenPyParser.AssetManagement;
 using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using RenPyParser.VGPrompter.Script.Internal;
@@ -25,7 +26,7 @@ namespace TestDDLCMod
             MaybeModContext(__instance, ____executionContext);
         }
 
-        private static bool DumpBlocks = false;
+        private static bool DumpBlocks = true;
 
         private static int depth = "[Info   : Unity Log] ".Length;
         private static int lineNumber = 0;
@@ -56,13 +57,13 @@ namespace TestDDLCMod
 
         private static void MaybeModContext(RenpyScriptExecution instance, RenpyExecutionContext context)
         {
-            var script = context.script;
-            var blocks = script.Blocks;
-            var rawBlocks = GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
-            var rawBlockEntryPoints = GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
+            lineNumber = 0;
             if (DumpBlocks)
             {
-                lineNumber = 0;
+                var script = context.script;
+                var blocks = script.Blocks;
+                var rawBlocks = GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
+                var rawBlockEntryPoints = GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
                 foreach (var entry in rawBlocks)
                 {
                     BlockEntryPoint entryPoint = rawBlockEntryPoints[entry.Key];
@@ -99,30 +100,14 @@ namespace TestDDLCMod
                 foreach (var init in initBucket.Value)
                 {
                     var initBlock = BuildBlock(init.Fields["block"], context);
-                    if (initBlock != null)
-                    {
-                        if (rawBlocks.ContainsKey(initBlock.Label))
-                        {
-                            rawBlocks.Remove(initBlock.Label);
-                            rawBlockEntryPoints.Remove(initBlock.Label);
-                        }
-                        rawBlocks.Add(initBlock.Label, initBlock);
-                        rawBlockEntryPoints.Add(initBlock.Label, new BlockEntryPoint(initBlock.Label));
-                    }
+                    RegisterBlock(initBlock, context);
                 }
             }
 
             foreach (var entry in Mod.ActiveMod.Labels)
             {
-                if (rawBlocks.ContainsKey(entry.Key))
-                {
-                    rawBlocks.Remove(entry.Key);
-                    rawBlockEntryPoints.Remove(entry.Key);
-                }
                 var newBlock = BuildBlock(entry.Key, entry.Value);
-                newBlock.callParameters = new RenpyCallParameter[0];
-                rawBlocks.Add(entry.Key, newBlock);
-                rawBlockEntryPoints.Add(entry.Key, new BlockEntryPoint(entry.Key));
+                RegisterBlock(newBlock, context);
             }
 
             if (unparseablePython.Count > 0)
@@ -137,6 +122,34 @@ namespace TestDDLCMod
                     Debug.Log(Indent(entry.Item2.StackTrace));
                     Debug.Log("----------------");
                 }
+            }
+        }
+
+        private static void RegisterBlock(RenpyBlock block, RenpyExecutionContext context)
+        {
+            if (block == null)
+            {
+                return;
+            }
+            var script = context.script;
+            var blocks = script.Blocks;
+            var rawBlocks = GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
+            var rawBlockEntryPoints = GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
+            if (rawBlocks.ContainsKey(block.Label))
+            {
+                rawBlocks.Remove(block.Label);
+                rawBlockEntryPoints.Remove(block.Label);
+            }
+            if (block.callParameters == null)
+            {
+                block.callParameters = new RenpyCallParameter[0];
+            }
+            rawBlocks.Add(block.Label, block);
+            rawBlockEntryPoints.Add(block.Label, new BlockEntryPoint(block.Label));
+
+            if (soundVars.Count > 0)
+            {
+                CreateAudioData(context);
             }
         }
 
@@ -827,16 +840,15 @@ namespace TestDDLCMod
             {
                 ParsePythonObj(pythonObj, result.Contents, name);
             }
-            foreach (var statement in result.Contents)
-            {
-                FinalizeLine(statement, result.Contents);
-            }
+            FinalizeJumps(result.Contents);
+            jumpMap.Clear();
             return result;
         }
 
         private static HashSet<string> seenNames = new HashSet<string>();
-        private static Dictionary<Line, Line> jumpMap = new Dictionary<Line, Line>();
+        private static Dictionary<object, Line> jumpMap = new Dictionary<object, Line>();
         private static List<Tuple<string, SyntaxException>> unparseablePython = new List<Tuple<string, SyntaxException>>();
+        private static Dictionary<string, string> soundVars = new Dictionary<string, string>();
         private static void ParsePythonObj(PythonObj obj, List<Line> container, string label)
         {
             //Debug.Log("Parsing " + obj.Name);
@@ -1076,8 +1088,21 @@ namespace TestDDLCMod
                                     }
                                     lineArgs = newLineArgs;
                                 }
+
+                                // apparently play asset paths *have* to be stored in a variable somewhere -.-
+                                var varName = $"${label}_{container.Count}";
+                                if (soundVars.ContainsKey(lineArgs[2]))
+                                {
+                                    varName = soundVars[lineArgs[2]];
+                                }
+                                else
+                                {
+                                    soundVars.Add(lineArgs[2], varName);
+                                }
+                                lineArgs[2] = varName;
                             }
                             renpyPlay.play.Asset = lineArgs[2];
+
                             if (lineArgs.Length > 3)
                             {
                                 for (var i = 3; i < lineArgs.Length; ++i)
@@ -1238,90 +1263,48 @@ namespace TestDDLCMod
                     break;
                 case "renpy.ast.EndTranslate":
                     break;
+                case "renpy.ast.Menu":
+                    //Debug.Log(obj);
+                    var items = obj.Fields["items"].List.Select(t => t.Tuple).ToArray();
+                    EmitSaylike(obj, container, label, "menu-with-caption", items[0][0].String, true);
+
+                    var gotoMenu = new RenpyGoToLine(-1);
+                    container.Add(gotoMenu);
+                    var endTarget = new RenpyNOP();
+
+                    var menuEntries = new List<RenpyMenuInputEntry>();
+                    foreach (var tuple in items.Skip(1))
+                    {
+                        var what = tuple[0].String;
+                        condition = Parser.Compile(ExtractPyExpr(tuple[1]));
+                        var block = tuple[2].List;
+                        Line menuTarget = null;
+                        var targetIndex = container.Count;
+                        foreach (var item in block)
+                        {
+                            ParsePythonObj(item, container, label);
+                        }
+                        var gotoEnd = new RenpyGoToLine(-1);
+                        container.Add(gotoEnd);
+                        jumpMap.Add(gotoEnd, endTarget);
+
+                        menuTarget = container[targetIndex];
+                        var entry = new RenpyMenuInputEntry(GetTextId(label, what), true, condition, -1);
+                        menuEntries.Add(entry);
+                        jumpMap.Add(entry, menuTarget);
+                    }
+
+                    // entry: id, toInterpolate, expression, target
+
+
+                    var renpyMenuInput = new RenpyMenuInput(label, menuEntries, false);
+                    container.Add(renpyMenuInput);
+                    jumpMap.Add(gotoMenu, renpyMenuInput);
+                    container.Add(endTarget);
+                    break;
                 case "renpy.ast.Say":
                     {
-                        int ID = 0;
-                        string tag = "";
-                        string variant = "";
-                        bool to_interpolate = false;
-                        bool skipWait = false;
-                        bool hasCps = false;
-                        int cps = 1;
-                        int cpsStart = 0;
-                        int cpsEnd = 0;
-                        bool cpsMultiplier = false;
-                        bool developerCommentary = false;
-                        int immediateUntil = 0;
-                        List<Tuple<int, float>> waitTuples = new List<Tuple<int, float>>();
-                        string command_type = "say";
-
-                        if (obj.Fields["who_fast"].Bool)
-                        {
-                            tag = obj.Fields["who"].String;
-                        }
-                        if (obj.Fields["attributes"].Type != PythonObj.ObjType.NONE)
-                        {
-                            variant = obj.Fields["attributes"].Tuple[0].String;
-                        }
-                        if (!obj.Fields["interact"].Bool)
-                        {
-                            Debug.LogWarning("Need to handle renpy.ast.Say.interact = False");
-                        }
-
-                        var what = obj.Fields["what"].String;
-
-                        // First need to add this text to the English dictionary for hashing
-                        var englishLines = Renpy.EnglishText as Lines;
-                        var englishDict = englishLines.GetDictionary();
-                        if (!englishDict.ContainsKey(label))
-                        {
-                            englishDict.Add(label, new Dictionary<int, string>());
-                        }
-                        bool foundExisting = false;
-                        foreach (var entry in englishDict[label])
-                        {
-                            if (entry.Value == what)
-                            {
-                                ID = entry.Key;
-                                foundExisting = true;
-                                break;
-                            }
-                        }
-                        if (!foundExisting)
-                        {
-                            ID = what.GetHashCode();
-                            englishDict[label][ID] = what;
-                        }
-
-                        var lines = Renpy.Text as Lines;
-                        var textDict = lines.GetDictionary();
-                        if (!textDict.ContainsKey(label))
-                        {
-                            textDict.Add(label, new Dictionary<int, string>());
-                        }
-                        textDict[label][ID] = what;
-
-                        container.Add(Activator.CreateInstance(
-                            typeof(DialogueLine).Assembly.GetType("RenpyParser.RenpyDialogueLine"),
-                            new object[]
-                            {
-                                label,
-                                ID,
-                                tag,
-                                variant,
-                                to_interpolate,
-                                skipWait,
-                                hasCps,
-                                cps,
-                                cpsStart,
-                                cpsEnd,
-                                cpsMultiplier,
-                                developerCommentary,
-                                immediateUntil,
-                                waitTuples,
-                                command_type,
-                            }
-                        ) as Line);
+                        EmitSaylike(obj, container, label);
                         break;
                     }
                 case "renpy.ast.Hide":
@@ -1392,17 +1375,130 @@ namespace TestDDLCMod
                     return;
             }
         }
-        private static void FinalizeLine(Line line, List<Line> container)
+
+        private static void EmitSaylike(PythonObj obj, List<Line> container, string label, string command_type = "say", string what = null, bool skipWait = false)
         {
-            switch (line)
+            string tag = "";
+            string variant = "";
+            bool to_interpolate = true;
+            bool hasCps = false;
+            int cps = 1;
+            int cpsStart = 0;
+            int cpsEnd = 0;
+            bool cpsMultiplier = false;
+            bool developerCommentary = false;
+            int immediateUntil = 0;
+            List<Tuple<int, float>> waitTuples = new List<Tuple<int, float>>();
+
+            if (obj.Fields.ContainsKey("who_fast") && obj.Fields["who_fast"].Bool)
             {
-                case RenpyGoToLine goToLine:
-                    goToLine.TargetLine = container.IndexOf(jumpMap[goToLine]);
-                    break;
-                case RenpyGoToLineUnless goToLineUnless:
-                    goToLineUnless.TargetLine = container.IndexOf(jumpMap[goToLineUnless]);
-                    break;
+                tag = obj.Fields["who"].String;
             }
+            if (obj.Fields.ContainsKey("attributes") && obj.Fields["attributes"].Type != PythonObj.ObjType.NONE)
+            {
+                variant = obj.Fields["attributes"].Tuple[0].String;
+            }
+            if (obj.Fields.ContainsKey("interact") && !obj.Fields["interact"].Bool)
+            {
+                Debug.LogWarning("Need to handle renpy.ast.Say.interact = False");
+            }
+
+            if (what == null)
+            {
+                what = obj.Fields["what"].String;
+            }
+
+            var ID = GetTextId(label, what);
+
+            container.Add(Activator.CreateInstance(
+                typeof(DialogueLine).Assembly.GetType("RenpyParser.RenpyDialogueLine"),
+                new object[]
+                {
+                                label,
+                                ID,
+                                tag,
+                                variant,
+                                to_interpolate,
+                                skipWait,
+                                hasCps,
+                                cps,
+                                cpsStart,
+                                cpsEnd,
+                                cpsMultiplier,
+                                developerCommentary,
+                                immediateUntil,
+                                waitTuples,
+                                command_type,
+                }
+            ) as Line);
+        }
+
+        private static int GetTextId(string label, string what)
+        {
+            var ID = -1;
+
+            // First need to add this text to the English dictionary for hashing
+            var englishLines = Renpy.EnglishText as Lines;
+            var englishDict = englishLines.GetDictionary();
+            if (!englishDict.ContainsKey(label))
+            {
+                englishDict.Add(label, new Dictionary<int, string>());
+            }
+            bool foundExisting = false;
+            foreach (var entry in englishDict[label])
+            {
+                if (entry.Value == what)
+                {
+                    ID = entry.Key;
+                    foundExisting = true;
+                    break;
+                }
+            }
+            if (!foundExisting)
+            {
+                ID = what.GetHashCode();
+                englishDict[label][ID] = what;
+            }
+
+            var lines = Renpy.Text as Lines;
+            var textDict = lines.GetDictionary();
+            if (!textDict.ContainsKey(label))
+            {
+                textDict.Add(label, new Dictionary<int, string>());
+            }
+            textDict[label][ID] = what;
+            return ID;
+        }
+
+        private static void FinalizeJumps(List<Line> container)
+        {
+            foreach (var entry in jumpMap)
+            {
+                switch (entry.Key)
+                {
+                    case RenpyGoToLine goToLine:
+                        goToLine.TargetLine = container.IndexOf(jumpMap[goToLine]);
+                        break;
+                    case RenpyGoToLineUnless goToLineUnless:
+                        goToLineUnless.TargetLine = container.IndexOf(jumpMap[goToLineUnless]);
+                        break;
+                    case RenpyMenuInputEntry menuInputEntry:
+                        menuInputEntry.gotoLineTarget = container.IndexOf(entry.Value);
+                        break;
+                    default:
+                        Debug.LogWarning($"Need to handle {entry.Key.GetType()} in the jump map!");
+                        break;
+                }
+            }
+        }
+        private static void CreateAudioData(RenpyExecutionContext context)
+        {
+            context.AddScope("audio");
+            foreach (var entry in soundVars)
+            {
+                context.SetVariableObject("audio." + entry.Value, RenpyAudioData.CreateAudioData(entry.Key));
+            }
+            soundVars.Clear();
         }
         private static string ExtractPyExpr(PythonObj expr)
         {
