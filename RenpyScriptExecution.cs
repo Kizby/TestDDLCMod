@@ -180,13 +180,13 @@ namespace TestDDLCMod
             return new DataValue();
         }
 
-        private static void DumpBlock(string Key, RenpyBlock block, BlockEntryPoint entryPoint)
+        private static void DumpBlock(string Key, RenpyBlock block, BlockEntryPoint entryPoint = null)
         {
             Log(Key + ":");
             AddDepth();
             foreach (var line in block.Contents)
             {
-                if (lineNumber == entryPoint.startOffset)
+                if (entryPoint != null && lineNumber == entryPoint.startOffset)
                 {
                     markEntry = true;
                 }
@@ -852,6 +852,17 @@ namespace TestDDLCMod
         private static RenpyBlock BuildBlock(string name, PythonObj block)
         {
             var result = new RenpyBlock(name);
+            if (block.Fields.ContainsKey("parameters"))
+            {
+                var parameters = block.Fields["parameters"];
+                if (parameters.Type != PythonObj.ObjType.NONE)
+                {
+                    result.callParameters = parameters.Fields["parameters"].List
+                        .Select(t => t.Tuple)
+                        .Select(t => new RenpyCallParameter(t[0].String, t[1].Type == PythonObj.ObjType.NONE ? null : ExtractPyExpr(t[1])))
+                        .ToArray();
+                }
+            }
             foreach (var pythonObj in block.Fields["block"].List)
             {
                 ParsePythonObj(pythonObj, result.Contents, name);
@@ -879,6 +890,9 @@ namespace TestDDLCMod
                     {
                         ParsePythonObj(stmt, container, label);
                     }
+                    var loopGoto = new RenpyGoToLine(-1);
+                    container.Add(loopGoto);
+                    jumpMap.Add(loopGoto, gotoStmt);
 
                     var gotoTarget = new RenpyNOP();
                     container.Add(gotoTarget);

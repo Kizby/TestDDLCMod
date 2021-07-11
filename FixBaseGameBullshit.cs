@@ -5,9 +5,11 @@ using RenPyParser.VGPrompter.DataHolders;
 using SimpleExpressionEngine;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using Parser = SimpleExpressionEngine.Parser;
 
@@ -383,6 +385,31 @@ namespace TestDDLCMod
         }
     }
 
+    // handle interpolations with tuple indexing
+    [HarmonyPatch(typeof(RenpyScript), "InterpolateText")]
+    public static class HandleInterpolatedTuples
+    {
+        // unescaped [, some amount of not-[ that are the varName, [, some amount of digits that are the index, ], ], with the initial [ and final ] not included in the match
+        static Regex tupleInterpolation = new Regex("(?<=(?<!\\\\)\\[)(?<varName>[^\\]]+)\\[(?<index>\\d+)\\](?=\\])", RegexOptions.Compiled);
+
+        static bool Prefix(RenpyScript __instance, ref string text)
+        {
+            var matchCollection = tupleInterpolation.Matches(text);
+            foreach (Match match in matchCollection)
+            {
+                var name = match.Groups["varName"].Value;
+                DataValue varActual;
+                if (!__instance.executionContext.ResolveVariable(name, out varActual))
+                    throw new InvalidDataException("Can't find variable " + name);
+                var index = int.Parse(match.Groups["index"].Value);
+                var result = varActual.GetArrayValueAtIndex(index);
+                text = text.Replace($"[{name}[{index}]]", result.GetAsString());
+            }
+
+            return true;
+        }
+    }
+
     // rethrow SyntaxExceptions in the Parser so our code can handle them
     [HarmonyPatch(typeof(OneLinePython), "Parse")]
     public static class LetMeHandleSyntaxExceptions
@@ -432,7 +459,15 @@ namespace TestDDLCMod
         {
             if (__result != null && !(__result is PlaceholderLine) && __result != lastLine)
             {
-                Debug.Log("Line: " + __result.ToString());
+                if (__result.GetType().ToString() == "RenpyParser.RenpyDialogueLine")
+                {
+                    Debug.Log((AccessTools.Method(__result.GetType(), "ToWrapper").Invoke(__result, new object[] { (Renpy.CurrentContext as RenpyExecutionContext).script }) as IScriptLine).ToString());
+                    
+                }
+                else
+                {
+                    Debug.Log("Line: " + __result.ToString());
+                }
                 lastLine = __result;
             }
         }
@@ -452,6 +487,32 @@ namespace TestDDLCMod
             else
             {
                 Debug.Log("Handling InlinePython for method: " + InlinePython.functionName);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(ExpressionRuntime), "ExecuteWithInstance")]
+    public static class ShowRuntimeEvaluations
+    {
+        public static void Postfix(CompiledExpression compiled, DataValue __result)
+        {
+            PatchRenpyScriptExecution.LogExpression(compiled);
+            while (__result.GetDataType() == DataType.ObjectRef &&
+                __result.GetObject() is DataValue)
+            {
+                __result = __result.GetObjectAs<DataValue>();
+            }
+            switch (__result.GetDataType())
+            {
+                case DataType.Float:
+                    Debug.Log($"Evaluated to: {__result.GetFloat()}");
+                    break;
+                case DataType.ObjectRef:
+                    Debug.Log($"Evaluated to a {__result.GetObject().GetType()}");
+                    break;
+                default:
+                    Debug.Log($"Evaluated to: {__result}");
+                    break;
             }
         }
     }
