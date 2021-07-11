@@ -151,6 +151,16 @@ namespace TestDDLCMod
             {
                 CreateAudioData(context);
             }
+            if (jumpMap.Count > 0)
+            {
+                FinalizeJumps(block);
+                jumpMap.Clear();
+            }
+
+            if (DumpBlocks)
+            {
+                DumpBlock(block.Label, block, rawBlockEntryPoints[block.Label]);
+            }
         }
 
         private static DataValue ExecutePython(PythonObj python, RenpyExecutionContext context)
@@ -840,8 +850,6 @@ namespace TestDDLCMod
             {
                 ParsePythonObj(pythonObj, result.Contents, name);
             }
-            FinalizeJumps(result.Contents);
-            jumpMap.Clear();
             return result;
         }
 
@@ -868,7 +876,7 @@ namespace TestDDLCMod
                     }
 
                     var gotoTarget = new RenpyNOP();
-                    container.Add(gotoStmt);
+                    container.Add(gotoTarget);
                     jumpMap.Add(gotoStmt, gotoTarget);
                     break;
                 case "renpy.ast.Return":
@@ -1470,8 +1478,9 @@ namespace TestDDLCMod
             return ID;
         }
 
-        private static void FinalizeJumps(List<Line> container)
+        private static void FinalizeJumps(RenpyBlock block)
         {
+            var container = block.Contents;
             foreach (var entry in jumpMap)
             {
                 switch (entry.Key)
