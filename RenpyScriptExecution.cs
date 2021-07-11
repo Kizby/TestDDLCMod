@@ -1341,17 +1341,18 @@ namespace TestDDLCMod
                     container.Add(new RenpyNOP());
                     break;
                 case "renpy.ast.Call":
-                    var callLabel = "";
+                    RenpyGoTo renpyCall;
                     if (!obj.Fields["expression"].Bool)
                     {
-                        callLabel = obj.Fields["label"].String;
+                        var callLabel = obj.Fields["label"].String;
+                        renpyCall = new RenpyGoTo(callLabel, true);
                     }
                     else
                     {
                         // don't have a context right now, just assume it's a constant string
-                        callLabel = ExtractPyExpr(obj.Fields["label"]);
+                        var callExpression = ExtractPyExpr(obj.Fields["label"]);
+                        renpyCall = new RenpyGoTo("", true, "call expression " + callExpression);
                     }
-                    var renpyCall = new RenpyGoTo(callLabel, true);
                     if (obj.Fields["arguments"].Type == PythonObj.ObjType.NONE)
                     {
                         renpyCall.callParameters = new RenpyCallParameter[0];
