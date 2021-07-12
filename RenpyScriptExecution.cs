@@ -106,7 +106,7 @@ namespace TestDDLCMod
 
             foreach (var entry in Mod.ActiveMod.Labels)
             {
-                var newBlock = BuildBlock(entry.Key, entry.Value);
+                var newBlock = BuildBlock(entry.Key, entry.Value, context);
                 RegisterBlock(newBlock, context);
             }
 
@@ -849,7 +849,7 @@ namespace TestDDLCMod
             return true;
         }
 
-        private static RenpyBlock BuildBlock(string name, PythonObj block)
+        private static RenpyBlock BuildBlock(string name, PythonObj block, RenpyExecutionContext context)
         {
             var result = new RenpyBlock(name);
             if (block.Fields.ContainsKey("parameters"))
@@ -865,7 +865,7 @@ namespace TestDDLCMod
             }
             foreach (var pythonObj in block.Fields["block"].List)
             {
-                ParsePythonObj(pythonObj, result.Contents, name);
+                ParsePythonObj(pythonObj, result.Contents, name, context);
             }
             return result;
         }
@@ -874,7 +874,7 @@ namespace TestDDLCMod
         private static Dictionary<object, Line> jumpMap = new Dictionary<object, Line>();
         private static List<Tuple<string, SyntaxException>> unparseablePython = new List<Tuple<string, SyntaxException>>();
         private static Dictionary<string, string> soundVars = new Dictionary<string, string>();
-        private static void ParsePythonObj(PythonObj obj, List<Line> container, string label)
+        private static void ParsePythonObj(PythonObj obj, List<Line> container, string label, RenpyExecutionContext context)
         {
             //Debug.Log("Parsing " + obj.Name);
             switch (obj.Name)
@@ -888,7 +888,7 @@ namespace TestDDLCMod
 
                     foreach (var stmt in obj.Fields["block"].List)
                     {
-                        ParsePythonObj(stmt, container, label);
+                        ParsePythonObj(stmt, container, label, context);
                     }
                     var loopGoto = new RenpyGoToLine(-1);
                     container.Add(loopGoto);
@@ -957,7 +957,7 @@ namespace TestDDLCMod
 
                         foreach (var stmt in entry.Tuple[1].List)
                         {
-                            ParsePythonObj(stmt, container, label);
+                            ParsePythonObj(stmt, container, label, context);
                         }
 
                         var hardGoto = new RenpyGoToLine(-1);
@@ -1286,7 +1286,7 @@ namespace TestDDLCMod
                     // not doing anything with these nodes (yet?)
                     foreach (var stmt in obj.Fields["block"].List)
                     {
-                        ParsePythonObj(stmt, container, label);
+                        ParsePythonObj(stmt, container, label, context);
                     }
                     break;
                 case "renpy.ast.EndTranslate":
@@ -1310,7 +1310,7 @@ namespace TestDDLCMod
                         var targetIndex = container.Count;
                         foreach (var item in block)
                         {
-                            ParsePythonObj(item, container, label);
+                            ParsePythonObj(item, container, label, context);
                         }
                         var gotoEnd = new RenpyGoToLine(-1);
                         container.Add(gotoEnd);
@@ -1394,7 +1394,37 @@ namespace TestDDLCMod
                     container.Add(new RenpyGoTo(target, false));
                     break;
                 case "renpy.ast.ShowLayer":
+                    var layer = obj.Fields["layer"].String;
+                    var renpyShowLayer = new RenpyShow("show layer " + layer);
+                    renpyShowLayer.show.Layer = layer;
+                    renpyShowLayer.show.TransformName = "";
+                    renpyShowLayer.show.TransformCallParameters = new RenpyCallParameter[0];
+                    if (obj.Fields.ContainsKey("at_list"))
+                    {
+                        var ats = obj.Fields["at_list"].List;
+                        if (ats.Count > 0)
+                        {
+                            var at = ExtractPyExpr(ats[0]);
+                            renpyShowLayer.ShowData += " at " + at;
+                            renpyShowLayer.show.TransformName = at;
+                            if (ats.Count > 1)
+                            {
+                                Debug.LogWarning("Need to handle multiple ats in ShowLayer");
+                            }
+                        }
+                    }
+                    var atl = obj.Fields["atl"];
+                    container.Add(renpyShowLayer);
+                    break;
                 case "renpy.ast.Label":
+                    var cachedSoundVars = soundVars;
+                    var cachedJumpMap = jumpMap;
+                    soundVars = new Dictionary<string, string>();
+                    jumpMap = new Dictionary<object, Line>();
+                    RegisterBlock(BuildBlock(obj.Fields["name"].String, obj, context), context);
+                    soundVars = cachedSoundVars;
+                    jumpMap = cachedJumpMap;
+                    break;
                 default:
                     if (seenNames.Add(obj.Name))
                     {
