@@ -510,10 +510,45 @@ namespace TestDDLCMod
                 case DataType.ObjectRef:
                     Debug.Log($"Evaluated to a {__result.GetObject().GetType()}");
                     break;
-                default:
-                    Debug.Log($"Evaluated to: {__result}");
-                    break;
             }
+        }
+    }
+    [HarmonyPatch(typeof(RenpyExecutionContext))]
+    public static class ShowVariablesSet
+    {
+        [HarmonyPatch("SetVariable", new Type[] { typeof(string), typeof(DataValue) })]
+        public static void Prefix(string fullName, DataValue value)
+        {
+            string str = value.GetAsString();
+            if (value.GetDataType() == DataType.ObjectRef && typeof(Array).IsAssignableFrom(value.GetObject().GetType()))
+            {
+                str = $"[{string.Join(", ", value.GetObject() as Array)}]";
+            }
+            Debug.Log($"Setting {fullName}: {str}");
+        }
+    }
+    [HarmonyPatch(typeof(DataValue))]
+    public static class ShowDataValueSets
+    {
+        [HarmonyPatch("SetArrayValueAtIndex")]
+        public static void Prefix(int index, DataValue value)
+        {
+            string str = value.GetAsString();
+            if (value.GetDataType() == DataType.ObjectRef && typeof(Array).IsAssignableFrom(value.GetObject().GetType()))
+            {
+                str = $"[{string.Join(", ", value.GetObject() as object[])}]";
+            }
+            Debug.Log($"Setting index {index}: {str}");
+        }
+        [HarmonyPatch("SetDictionaryValue")]
+        public static void Prefix(string key, DataValue value)
+        {
+            string str = value.GetAsString();
+            if (value.GetDataType() == DataType.ObjectRef && typeof(Array).IsAssignableFrom(value.GetObject().GetType()))
+            {
+                str = $"[{string.Join(", ", value.GetObject() as Array)}]";
+            }
+            Debug.Log($"Setting key {key}: {str}");
         }
     }
 }

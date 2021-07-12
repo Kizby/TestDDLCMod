@@ -962,6 +962,7 @@ namespace TestDDLCMod
 
                         var hardGoto = new RenpyGoToLine(-1);
                         jumpMap.Add(hardGoto, afterIf);
+                        container.Add(hardGoto);
                     }
                     jumpMap.Add(lastGoto, afterIf);
                     container.Add(afterIf);
