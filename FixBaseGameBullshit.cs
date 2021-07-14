@@ -497,20 +497,27 @@ namespace TestDDLCMod
         public static void Postfix(CompiledExpression compiled, DataValue __result)
         {
             PatchRenpyScriptExecution.LogExpression(compiled);
-            while (__result.GetDataType() == DataType.ObjectRef &&
-                __result.GetObject() is DataValue)
+            Debug.Log($"Evaluated to: {PrettyDataValue(__result)}");
+        }
+
+        public static string PrettyDataValue(DataValue value)
+        {
+            while (value.GetDataType() == DataType.ObjectRef)
             {
-                __result = __result.GetObjectAs<DataValue>();
-            }
-            switch (__result.GetDataType())
-            {
-                case DataType.Float:
-                    Debug.Log($"Evaluated to: {__result.GetFloat()}");
+                if (value.GetObject() is DataValue)
+                {
+                    value = value.GetObjectAs<DataValue>();
+                }
+                else if (value.GetObject() is Array array)
+                {
+                    return $"[{string.Join(", ", array as object[])}]";
+                }
+                else
+                {
                     break;
-                case DataType.ObjectRef:
-                    Debug.Log($"Evaluated to a {__result.GetObject().GetType()}");
-                    break;
+                }
             }
+            return value.GetAsString();
         }
     }
     [HarmonyPatch(typeof(RenpyExecutionContext))]
@@ -519,12 +526,7 @@ namespace TestDDLCMod
         [HarmonyPatch("SetVariable", new Type[] { typeof(string), typeof(DataValue) })]
         public static void Prefix(string fullName, DataValue value)
         {
-            string str = value.GetAsString();
-            if (value.GetDataType() == DataType.ObjectRef && typeof(Array).IsAssignableFrom(value.GetObject().GetType()))
-            {
-                str = $"[{string.Join(", ", value.GetObject() as Array)}]";
-            }
-            Debug.Log($"Setting {fullName}: {str}");
+            Debug.Log($"Setting {fullName}: {ShowRuntimeEvaluations.PrettyDataValue(value)}");
         }
     }
     [HarmonyPatch(typeof(DataValue))]
@@ -533,22 +535,12 @@ namespace TestDDLCMod
         [HarmonyPatch("SetArrayValueAtIndex")]
         public static void Prefix(int index, DataValue value)
         {
-            string str = value.GetAsString();
-            if (value.GetDataType() == DataType.ObjectRef && typeof(Array).IsAssignableFrom(value.GetObject().GetType()))
-            {
-                str = $"[{string.Join(", ", value.GetObject() as object[])}]";
-            }
-            Debug.Log($"Setting index {index}: {str}");
+            Debug.Log($"Setting index {index}: {ShowRuntimeEvaluations.PrettyDataValue(value)}");
         }
         [HarmonyPatch("SetDictionaryValue")]
         public static void Prefix(string key, DataValue value)
         {
-            string str = value.GetAsString();
-            if (value.GetDataType() == DataType.ObjectRef && typeof(Array).IsAssignableFrom(value.GetObject().GetType()))
-            {
-                str = $"[{string.Join(", ", value.GetObject() as Array)}]";
-            }
-            Debug.Log($"Setting key {key}: {str}");
+            Debug.Log($"Setting key {key}: {ShowRuntimeEvaluations.PrettyDataValue(value)}");
         }
     }
     [HarmonyPatch(typeof(MusicSource), "InitAudioSource")]

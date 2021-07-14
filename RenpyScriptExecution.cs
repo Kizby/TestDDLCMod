@@ -303,7 +303,7 @@ namespace TestDDLCMod
                         }
                         else if (show.IsLayer)
                         {
-                            toLog += " layer " + show.Layer;
+                            toLog += " layer " + show.Name;
                         }
                         else
                         {
@@ -338,7 +338,10 @@ namespace TestDDLCMod
                         {
                             toLog += " behind " + show.Behind;
                         }
-                        toLog += " onlayer " + show.Layer;
+                        if (!show.IsLayer)
+                        {
+                            toLog += " onlayer " + show.Layer;
+                        }
                         if (show.HasZOrder)
                         {
                             toLog += " zorder " + show.ZOrder;
@@ -727,12 +730,16 @@ namespace TestDDLCMod
 
                     if (obj.Fields["atl"].Type != PythonObj.ObjType.NONE)
                     {
-                        Log("Need to handle an image with atl: " + obj.ToString());
+                        var fullname = $"{(bundle != "unbundled" ? $"{bundle} " : "")}{imgName}";
                         // Placeholder block so we don't break later
-                        var fullname = bundle + " " + imgName;
+                        if (context.script.Blocks.Contains(fullname))
+                        {
+                            // base game has this transform, so use that
+                            break;
+                        }
                         block = new RenpyBlock(fullname);
                         block.callParameters = new RenpyCallParameter[0];
-                        block.Contents.Add(new RenpyReturn());
+                        ParseATLObject(obj.Fields["atl"], block);
                         break;
                     }
 
@@ -741,9 +748,7 @@ namespace TestDDLCMod
                     {
                         // Composites are apparently evaluated later? Just pass along the string
                         var fullname = bundle + " " + imgName;
-                        block = new RenpyBlock(fullname);
-                        block.callParameters = new RenpyCallParameter[0];
-                        block.Contents.Add(new RenpyLoadImage(fullname, "images/" + rawExpression));
+                        block = BuildImageBlock(fullname, "image/" + rawExpression, context);
                         break;
                     }
 
@@ -764,10 +769,8 @@ namespace TestDDLCMod
                         // need to make a block
                         var image = actual.GetObjectAs<RenpyStandardProxyLib.Image>();
                         var fullname = bundle + " " + imgName;
-                        block = new RenpyBlock(fullname);
-                        block.callParameters = new RenpyCallParameter[0];
-                        block.Contents.Add(new RenpyLoadImage(fullname, image.filename));
-                        if (image is Mod_ProxyLib.LiveTile tiledImage)
+                        block = BuildImageBlock(fullname, image.filename, context);
+                        if (block != null && image is Mod_ProxyLib.LiveTile tiledImage)
                         {
                             // fuck, iunno, how many times do we need to tile to fill the screen?
                             block.Contents.Add(new RenpyImmediateTransform("xtile 10 ytile 10"));
@@ -785,12 +788,7 @@ namespace TestDDLCMod
                     {
                         // need to make a block
                         var fullname = bundle + " " + imgName;
-                        if (!context.script.Blocks.Contains(fullname))
-                        {
-                            block = new RenpyBlock(fullname);
-                            block.callParameters = new RenpyCallParameter[0];
-                            block.Contents.Add(new RenpyLoadImage(fullname, actual.GetString()));
-                        }
+                        block = BuildImageBlock(fullname, actual.ToString(), context);
                     }
                     break;
                 default:
@@ -799,6 +797,77 @@ namespace TestDDLCMod
                     break;
             }
             return block;
+        }
+
+        private static RenpyBlock BuildImageBlock(string label, string expression, RenpyExecutionContext context)
+        {
+            RenpyBlock block = null;
+            if (!context.script.Blocks.Contains(label))
+            {
+                block = new RenpyBlock(label);
+                block.callParameters = new RenpyCallParameter[0];
+                block.Contents.Add(new RenpyLoadImage(label, expression));
+            }
+
+            return block;
+        }
+
+        private static void ParseATLObject(PythonObj obj, RenpyBlock block)
+        {
+            return; //stub for now
+            switch (obj.Name) {
+                case "renpy.atl.RawBlock":
+                    foreach (var statement in obj.Fields["statements"].List)
+                    {
+                        ParseATLObject(statement, block);
+                    }
+                    break;
+                case "renpy.atl.RawMultipurpose":
+                    if (!ValidateObj(obj, new Dictionary<string, Predicate<PythonObj>>()
+                        {
+                            {"splines", l => l.Type == PythonObj.ObjType.LIST && l.List.Count == 0 },
+                            {"properties", l => l.Type == PythonObj.ObjType.LIST && l.List.Count == 0 },
+                            {"warp_function", n => n.Type == PythonObj.ObjType.NONE },
+                            {"expressions", l => l.Type == PythonObj.ObjType.LIST },
+                            {"warper", n => n.Type == PythonObj.ObjType.NONE },
+                            {"revolution", n => n.Type == PythonObj.ObjType.NONE },
+                        }))
+                    {
+                        goto default;
+                    }
+                    var expressions = obj.Fields["expressions"].List;
+                    if (expressions.Count > 1)
+                    {
+                        Log("Need to handle multiple expressions");
+                        goto default;
+                    }
+                    string command = "";
+                    if (expressions.Count > 0)
+                    {
+                        var expression = expressions[0].Tuple;
+                        if (expression[1].Type != PythonObj.ObjType.NONE)
+                        {
+                            Log("Need to handle second element of expression tuple");
+                            goto default;
+                        }
+                        command = ExtractPyExpr(expression[0]);
+                        if (command.StartsWith("\""))
+                        {
+                            // just an image;
+                        }
+                    }
+
+
+                    var duration = float.Parse(ExtractPyExpr(obj.Fields["duration"]));
+                    RenpyTransformData data = new RenpyTransformData();
+                    RenpyEasedTransform easedTransform = new RenpyEasedTransform(command, duration, RenpyEasedTransform.EaseType.Linear, ref data);
+                    break;
+                default:
+                    Log("Need to handle atl object: " + obj.Name);
+                    Log(Indent(obj.ToString()));
+                    break;
+            }
+            return;
         }
 
         private static bool ParseScreenNode(PythonObj obj, Dictionary<string, string> keywords, List<Line> container)
@@ -1582,15 +1651,18 @@ namespace TestDDLCMod
             return "";
         }
 
-        private static void ValidateObj(PythonObj obj, Dictionary<string, Predicate<PythonObj>> fields)
+        private static bool ValidateObj(PythonObj obj, Dictionary<string, Predicate<PythonObj>> fields)
         {
+            var result = true;
             foreach (var field in fields)
             {
                 if (!field.Value(obj.Fields[field.Key]))
                 {
                     Debug.Log("Unexpected " + field.Key + " in " + obj.Name + ": " + obj.Fields[field.Key]);
+                    result = false;
                 }
             }
+            return result;
         }
 
         private static void ValidateTuple(PythonObj obj, string field, List<Predicate<PythonObj>> elements)
