@@ -33,7 +33,7 @@ namespace TestDDLCMod
         {
             __instance.apps.Add(__state);
         }
-
+        /*
         // skip straight to DDLC
         static bool HaveDokid = false;
         [HarmonyPatch("SwitchToApp")]
@@ -46,6 +46,6 @@ namespace TestDDLCMod
                 newAppId = LauncherAppId.DokiDoki;
                 HaveDokid = true;
             }
-        }
+        }*/
     }
 }
