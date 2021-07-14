@@ -723,7 +723,7 @@ namespace TestDDLCMod
                     {
                         var asset = PathHelpers.SanitizePathToAddressableName(subEntry.Value);
                         string bundle;
-                        if (!gestaltDependencies.TryGetBundle(asset, out bundle))
+                        //if (!gestaltDependencies.TryGetBundle(asset, out bundle))
                         {
                             gestaltDependencies.AddAsset(asset, MOD_BUNDLE_NAME, subEntry.Value);
                         }

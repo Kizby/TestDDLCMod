@@ -816,7 +816,7 @@ namespace TestDDLCMod
                 if (expression.Contains("im.Composite"))
                 {
                     expression = expression.Substring(expression.IndexOf("im.Composite"));
-                    var composite = CompositeSpriteParser.ParseFixedCompositeSprite(expression);
+                    var composite = CompositeSpriteParser.ParseFixedCompositeSprite(expression.Replace("'", "\""));
                     for (var i = 0; i < composite.AssetPaths.Length; ++i)
                     {
                         var pathComponents = composite.AssetPaths[i].Split('/');
