@@ -725,7 +725,7 @@ namespace TestDDLCMod
                         string bundle;
                         //if (!gestaltDependencies.TryGetBundle(asset, out bundle))
                         {
-                            gestaltDependencies.AddAsset(asset, MOD_BUNDLE_NAME, subEntry.Value);
+                            gestaltDependencies.AddAsset(subEntry.Key, MOD_BUNDLE_NAME, subEntry.Value);
                         }
                     }
                 }
@@ -813,17 +813,6 @@ namespace TestDDLCMod
             {
                 return true;
             }
-            /*if (type == typeof(GameObject))
-            {
-                foreach (var testType in Mod.ActiveMod.Assets.Keys)
-                {
-                    if (Mod.ActiveMod.Assets[testType].ContainsKey(name))
-                    {
-                        type = testType;
-                        break;
-                    }
-                }
-            }*/
             if (!Mod.ActiveMod.Assets.ContainsKey(type) || !Mod.ActiveMod.Assets[type].ContainsKey(name))
             {
                 return true;

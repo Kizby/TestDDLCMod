@@ -689,7 +689,7 @@ namespace TestDDLCMod
                     if (store == "audio")
                     {
                         // these are audio assets, not strings
-                        context.SetVariableObject(name, RenpyAudioData.CreateAudioData(value.GetString()));
+                        context.SetVariableObject(name, CreateModAudioData(value.GetString()));
                     }
                     else switch (value.GetDataType())
                         {
@@ -806,11 +806,30 @@ namespace TestDDLCMod
             return block;
         }
 
+        private static RenpyAudioData CreateModAudioData(string path)
+        {
+            var data = RenpyAudioData.CreateAudioData(path);
+            var assetName = path;
+            if (assetName.Contains(">"))
+            {
+                assetName = assetName.Split('>')[1];
+            }
+            if (assetName.StartsWith("/"))
+            {
+                // probably a modded asset
+                data.simpleAssetName = assetName;
+            }
+            return data;
+        }
+
         private static RenpyBlock BuildImageBlock(string label, string expression, RenpyExecutionContext context)
         {
             RenpyBlock block = null;
             if (!context.script.Blocks.Contains(label))
             {
+                ActiveLabelAssetBundles labelBundles = AccessTools.StaticFieldRefAccess<ActiveLabelAssetBundles>(typeof(Renpy), "s_ActiveLabelAssetBundles");
+                var labelAssetBundleDependencies = AccessTools.Field(typeof(ActiveLabelAssetBundles), "<LabelAssetBundle>k__BackingField").GetValue(labelBundles) as LabelAssetBundleDependencies;
+
                 block = new RenpyImageBlock(label);
                 block.callParameters = new RenpyCallParameter[0];
                 if (expression.Contains("im.Composite"))
@@ -825,36 +844,42 @@ namespace TestDDLCMod
                         {
                             asset = pathComponents[pathComponents.Length - 2] + " " + asset;
                         }
-                        block.Contents.Add(new RenpyLoadImage(PathHelpers.SanitizePathToAddressableName(asset), composite.AssetPaths[i]));
+                        asset = PathHelpers.SanitizePathToAddressableName(asset);
+
+                        string bundle;
+                        if (!labelAssetBundleDependencies.TryGetBundle(asset, out bundle))
+                        {
+                            // probably a mod asset
+                            asset = composite.AssetPaths[i];
+                        }
+                        block.Contents.Add(new RenpyLoadImage(asset, composite.AssetPaths[i]));
                         block.Contents.Add(new RenpyImmediateTransform($"xpos {composite.Offsets[i][0]} ypos {composite.Offsets[i][1]}"));
                     }
                 }
                 else
                 {
-                    if (!Mod.ActiveMod.Assets[typeof(Sprite)].ContainsKey(label))
+                    var assetName = expression;
+                    /*if (!Mod.ActiveMod.Assets[typeof(Sprite)].ContainsKey(assetName))
                     {
-                        var asset = expression.Split('/').Last().Split('.').First();
-                        if (Mod.ActiveMod.Assets[typeof(Sprite)].ContainsKey(asset))
+                        var existingAssetName = expression.Split('/').Last().Split('.').First() + "__image";
+                        if (Mod.ActiveMod.Assets[typeof(Sprite)].ContainsKey(existingAssetName))
                         {
-                            Mod.ActiveMod.Assets[typeof(Sprite)][label] = Mod.ActiveMod.Assets[typeof(Sprite)][asset];
-
-                            ActiveLabelAssetBundles labelBundles = AccessTools.StaticFieldRefAccess<ActiveLabelAssetBundles>(typeof(Renpy), "s_ActiveLabelAssetBundles");
-                            var deps = AccessTools.Field(typeof(ActiveLabelAssetBundles), "<LabelAssetBundle>k__BackingField").GetValue(labelBundles) as LabelAssetBundleDependencies;
+                            Mod.ActiveMod.Assets[typeof(Sprite)][assetName] = Mod.ActiveMod.Assets[typeof(Sprite)][existingAssetName];
                             string bundle;
-                            if (deps.TryGetBundle(label, out bundle))
+                            if (labelAssetBundleDependencies.TryGetBundle(assetName, out bundle))
                             {
-                                Debug.Log($"Why are we building an image block for {label}? It's already in {bundle}!");
+                                Debug.Log($"Why are we building an image block for {assetName}? It's already in {bundle}!");
                             }
                             else
                             {
-                                deps.AddAsset(label, DontUnloadBundles.MOD_BUNDLE_NAME, Mod.ActiveMod.Assets[typeof(Sprite)][label]);
+                                labelAssetBundleDependencies.AddAsset(assetName, DontUnloadBundles.MOD_BUNDLE_NAME, Mod.ActiveMod.Assets[typeof(Sprite)][assetName]);
                             }
                         } else
                         {
-                            Debug.Log($"Couldn't resolve {label} or {asset} as a mod asset");
+                            Debug.Log($"Couldn't resolve {assetName} or {existingAssetName} as a mod asset");
                         }
-                    }
-                    block.Contents.Add(new RenpyLoadImage(label, expression));
+                    }*/
+                    block.Contents.Add(new RenpyLoadImage(assetName, expression));
                 }
             }
 
@@ -1196,7 +1221,7 @@ namespace TestDDLCMod
                             {
                                 renpyPlay.play.Channel = Channel.Music;
                             }
-                            else if (lineArgs[1].ToLower() == "sound")
+                            else if (lineArgs[1].ToLower() == "sound" || lineArgs[1].ToLower() == "audio")
                             {
                                 renpyPlay.play.Channel = Channel.Sound;
                             }
@@ -1673,7 +1698,8 @@ namespace TestDDLCMod
             context.AddScope("audio");
             foreach (var entry in soundVars)
             {
-                context.SetVariableObject("audio." + entry.Value, RenpyAudioData.CreateAudioData(entry.Key));
+                var data = CreateModAudioData(entry.Key);
+                context.SetVariableObject("audio." + entry.Value, data);
             }
             soundVars.Clear();
         }

@@ -510,7 +510,7 @@ namespace TestDDLCMod
                 }
                 else if (value.GetObject() is Array array)
                 {
-                    return $"[{string.Join(", ", array as object[])}]";
+                    return $"[{string.Join(", ", array.Cast<object>().Select(o => o ?? "None"))}]";
                 }
                 else
                 {

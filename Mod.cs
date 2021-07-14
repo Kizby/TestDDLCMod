@@ -249,6 +249,11 @@ namespace TestDDLCMod
             var Entry = Entries.CreateEntryAt(innerPath);
             Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Open | FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
             FileBrowserEntries.AssetReference.AssetTypes AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.None;
+            var assetName = innerPath;
+            if (assetName.Contains(".rpa/"))
+            {
+                assetName = assetName.Substring(assetName.IndexOf(".rpa") + ".rpa".Length).ToLower();
+            }
             switch (Path.GetExtension(innerPath).ToLower())
             {
                 case ".bat":
@@ -258,27 +263,27 @@ namespace TestDDLCMod
                 case ".txt":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Text;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.TextAsset;
-                    Assets[typeof(TextAsset)][PathHelpers.SanitizePathToAddressableName(innerPath).ToLower()] = innerPath;
+                    Assets[typeof(TextAsset)][assetName] = innerPath;
                     break;
                 case ".png":
                 case ".jpg":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Image;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.Sprite;
-                    Assets[typeof(Sprite)][PathHelpers.SanitizePathToAddressableName(innerPath).ToLower()] = innerPath;
+                    Assets[typeof(Sprite)][assetName] = innerPath;
                     break;
                 case ".ogg":
                 case ".mp3":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Audio;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip;
-                    Assets[typeof(AudioClip)][PathHelpers.SanitizePathToAddressableName(innerPath).ToLower()] = innerPath;
+                    Assets[typeof(AudioClip)][assetName] = innerPath;
                     break;
                 default:
                     Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
                     break;
             }
-            if (AssetAssetType != FileBrowserEntries.AssetReference.AssetTypes.None)
+            if (assetName != null)
             {
-                Debug.Log($"Loading mod_asset {PathHelpers.SanitizePathToAddressableName(innerPath).ToLower()} = {innerPath}");
+                Debug.Log($"Loading mod_asset {assetName} = {innerPath}");
             }
             Entry.Modified = lastWriteTime;
             Entry.ModifiedUTC = Entry.Modified.ToFileTimeUtc();
