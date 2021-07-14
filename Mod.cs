@@ -1,6 +1,7 @@
 ﻿using RenpyLauncher;
 using RenpyParser;
 using RenPyParser.AssetManagement;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -11,7 +12,7 @@ using UnityPS.Platform;
 
 namespace TestDDLCMod
 {
-    public class Mod : Object
+    public class Mod : UnityEngine.Object
     {
         public readonly string Name;
         public readonly FileBrowserEntries.FileBrowserEntry.Type Type;
@@ -20,6 +21,9 @@ namespace TestDDLCMod
         public Dictionary<string, PythonObj> Labels = new Dictionary<string, PythonObj>();
         public List<PythonObj> EarlyPython = new List<PythonObj>();
         public SortedDictionary<int, List<PythonObj>> Inits = new SortedDictionary<int, List<PythonObj>>();
+
+        public Dictionary<Type, Dictionary<string, string>> Assets = new Dictionary<Type, Dictionary<string, string>>();
+        public AssetBundle AssetContainer = null;
 
         private const string MOD_CACHE_NAME = "currentMod.txt";
         private static FileBrowserEntries BaseGameEntries;
@@ -146,6 +150,9 @@ namespace TestDDLCMod
                 {
                     Reset(); // extract the archive
                 }
+                Assets[typeof(TextAsset)] = new Dictionary<string, string>();
+                Assets[typeof(Sprite)] = new Dictionary<string, string>();
+                Assets[typeof(AudioClip)] = new Dictionary<string, string>();
 
                 Entries = ScriptableObject.CreateInstance<FileBrowserEntries>();
                 Entries.Entries = new List<FileBrowserEntries.FileBrowserEntry>();
@@ -237,7 +244,7 @@ namespace TestDDLCMod
             VirtualFileSystem.Entries = Entries;
         }
 
-        private void AddEntry(string innerPath, long length, System.DateTime lastWriteTime)
+        private void AddEntry(string innerPath, long length, DateTime lastWriteTime)
         {
             var Entry = Entries.CreateEntryAt(innerPath);
             Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Open | FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
@@ -251,20 +258,27 @@ namespace TestDDLCMod
                 case ".txt":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Text;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.TextAsset;
+                    Assets[typeof(TextAsset)][PathHelpers.SanitizePathToAddressableName(innerPath)] = innerPath;
                     break;
                 case ".png":
                 case ".jpg":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Image;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.Sprite;
+                    Assets[typeof(Sprite)][PathHelpers.SanitizePathToAddressableName(innerPath)] = innerPath;
                     break;
                 case ".ogg":
                 case ".mp3":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Audio;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip;
+                    Assets[typeof(AudioClip)][PathHelpers.SanitizePathToAddressableName(innerPath)] = innerPath;
                     break;
                 default:
                     Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
                     break;
+            }
+            if (AssetAssetType != FileBrowserEntries.AssetReference.AssetTypes.None)
+            {
+                Debug.Log($"Loading mod_asset {PathHelpers.SanitizePathToAddressableName(innerPath)} = {innerPath}");
             }
             Entry.Modified = lastWriteTime;
             Entry.ModifiedUTC = Entry.Modified.ToFileTimeUtc();

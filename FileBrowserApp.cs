@@ -83,7 +83,7 @@ namespace TestDDLCMod
             }
         }
 
-        static UnityEngine.Object LoadResource(string path, Type systemTypeInstance)
+        public static UnityEngine.Object LoadResource(string path, Type systemTypeInstance)
         {
             if (systemTypeInstance == typeof(Mod))
             {

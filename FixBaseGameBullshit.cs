@@ -462,7 +462,7 @@ namespace TestDDLCMod
                 if (__result.GetType().ToString() == "RenpyParser.RenpyDialogueLine")
                 {
                     Debug.Log((AccessTools.Method(__result.GetType(), "ToWrapper").Invoke(__result, new object[] { (Renpy.CurrentContext as RenpyExecutionContext).script }) as IScriptLine).ToString());
-                    
+
                 }
                 else
                 {
@@ -491,7 +491,7 @@ namespace TestDDLCMod
         }
     }
 
-    [HarmonyPatch(typeof(ExpressionRuntime), "ExecuteWithInstance")]
+    //[HarmonyPatch(typeof(ExpressionRuntime), "ExecuteWithInstance")]
     public static class ShowRuntimeEvaluations
     {
         public static void Postfix(CompiledExpression compiled, DataValue __result)
@@ -549,6 +549,14 @@ namespace TestDDLCMod
                 str = $"[{string.Join(", ", value.GetObject() as Array)}]";
             }
             Debug.Log($"Setting key {key}: {str}");
+        }
+    }
+    [HarmonyPatch(typeof(MusicSource), "InitAudioSource")]
+    public static class InspectInitAudioSource
+    {
+        public static void Prefix(RenpyAudioData audioData)
+        {
+            Debug.Log($"Loading audioData for: {audioData.simpleAssetName}");
         }
     }
 }

@@ -1,7 +1,6 @@
 using HarmonyLib;
 using RenpyParser;
 using RenPyParser;
-using RenPyParser.AssetManagement;
 using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using RenPyParser.VGPrompter.Script.Internal;
@@ -135,7 +134,7 @@ namespace TestDDLCMod
             var blocks = script.Blocks;
             var rawBlocks = GetPrivateField<Blocks, Dictionary<string, RenpyBlock>>(blocks, "blocks");
             var rawBlockEntryPoints = GetPrivateField<Blocks, Dictionary<string, BlockEntryPoint>>(blocks, "blockEntryPoints");
-            if (rawBlocks.ContainsKey(block.Label))
+            if (rawBlocks.ContainsKey(block.Label) || rawBlockEntryPoints.ContainsKey(block.Label))
             {
                 rawBlocks.Remove(block.Label);
                 rawBlockEntryPoints.Remove(block.Label);
@@ -715,7 +714,7 @@ namespace TestDDLCMod
                     break;
                 case "renpy.ast.Image":
                     //Debug.Log(obj.ToString());
-                    string bundle = "unbundled", imgName;
+                    string bundle = DontUnloadBundles.MOD_BUNDLE_NAME, imgName;
                     if (obj.Fields["imgname"].Tuple.Count > 1)
                     {
                         bundle = obj.Fields["imgname"].Tuple[0].String;

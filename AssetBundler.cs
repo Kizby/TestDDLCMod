@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using UnityEngine;
 using UnityPS;
@@ -650,6 +651,8 @@ namespace TestDDLCMod
     [HarmonyPatch(typeof(ActiveAssetBundles))]
     public static class DontUnloadBundles
     {
+        public const string MOD_BUNDLE_NAME = "mod_assets";
+
         [HarmonyPatch("LoadPermanentBundles")]
         static bool Prefix(ActiveAssetBundles __instance, Dictionary<string, AssetBundle> ___m_ActiveAssetBundles, ActiveBundles ___m_ActiveBundles)
         {
@@ -707,6 +710,28 @@ namespace TestDDLCMod
                     dependencies.RequiredBundles.DoIf(seenBundles.Add, b => PermanentBundles.Insert(i + 1, b));
                 }
             }
+
+            // create a placeholder asset bundle for mod assets
+            if (!___m_ActiveAssetBundles.ContainsKey(MOD_BUNDLE_NAME))
+            {
+                ___m_ActiveAssetBundles.Add(MOD_BUNDLE_NAME, AccessTools.Constructor(typeof(AssetBundle)).Invoke(new object[0]) as AssetBundle);
+                Mod.ActiveMod.AssetContainer = ___m_ActiveAssetBundles[MOD_BUNDLE_NAME];
+                ___m_ActiveBundles.ForceAdd(MOD_BUNDLE_NAME);
+                foreach(var entry in Mod.ActiveMod.Assets)
+                {
+                    foreach(var subEntry in entry.Value)
+                    {
+                        var asset = PathHelpers.SanitizePathToAddressableName(subEntry.Value);
+                        string bundle;
+                        if (!gestaltDependencies.TryGetBundle(asset, out bundle))
+                        {
+                            gestaltDependencies.AddAsset(asset, MOD_BUNDLE_NAME, subEntry.Value);
+                        }
+                    }
+                }
+            }
+            PermanentBundles.Add(MOD_BUNDLE_NAME);
+
             ActiveLabelAssetBundles labelBundles = AccessTools.StaticFieldRefAccess<ActiveLabelAssetBundles>(typeof(Renpy), "s_ActiveLabelAssetBundles");
             AccessTools.Field(typeof(ActiveLabelAssetBundles), "<LabelAssetBundle>k__BackingField").SetValue(labelBundles, gestaltDependencies);
             AccessTools.Field(typeof(ActiveLabelAssetBundles), "<HasLabelAssetBundleLoaded>k__BackingField").SetValue(labelBundles, true);
@@ -755,9 +780,46 @@ namespace TestDDLCMod
             return false;
         }
         [HarmonyPatch("ValidateLoad")]
+        static bool Prefix(ActiveLabelAssetBundles __instance, string path, ref string bundleName, ref bool __result)
+        {
+            if (!Mod.IsModded())
+            {
+                return true;
+            }
+            if (!__instance.HasLabelAssetBundleLoaded)
+            {
+                Debug.Log("Why aren't label asset bundles loaded!?");
+                Renpy.LoadPermanentAssetBundles();
+            }
+            return true;
+        }
+        [HarmonyPatch("ValidateLoad")]
         static void Postfix(string path, ref string bundleName)
         {
             Debug.Log($"Found {path} in {bundleName}");
+        }
+    }
+
+    [HarmonyPatch(typeof(AssetBundle), "LoadAsset", new Type[] { typeof(string), typeof(Type) })]
+    public static class PatchAssetBundle
+    {
+        static bool Prefix(AssetBundle __instance, string name, Type type, ref object __result)
+        {
+            if (__instance != Mod.ActiveMod.AssetContainer)
+            {
+                return true;
+            }
+            if (!Mod.IsModded())
+            {
+                return true;
+            }
+            if (!Mod.ActiveMod.Assets[type].ContainsKey(name))
+            {
+                return true;
+            }
+            Debug.Log($"Found mod asset {name} at {Mod.ActiveMod.Assets[type][name]}");
+            __result = PatchFileBrowserApp.LoadResource(Mod.ActiveMod.Assets[type][name], type);
+            return false;
         }
     }
 }
