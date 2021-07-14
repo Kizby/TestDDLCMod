@@ -258,19 +258,19 @@ namespace TestDDLCMod
                 case ".txt":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Text;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.TextAsset;
-                    Assets[typeof(TextAsset)][PathHelpers.SanitizePathToAddressableName(innerPath)] = innerPath;
+                    Assets[typeof(TextAsset)][PathHelpers.SanitizePathToAddressableName(innerPath).ToLower()] = innerPath;
                     break;
                 case ".png":
                 case ".jpg":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Image;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.Sprite;
-                    Assets[typeof(Sprite)][PathHelpers.SanitizePathToAddressableName(innerPath)] = innerPath;
+                    Assets[typeof(Sprite)][PathHelpers.SanitizePathToAddressableName(innerPath).ToLower()] = innerPath;
                     break;
                 case ".ogg":
                 case ".mp3":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Audio;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip;
-                    Assets[typeof(AudioClip)][PathHelpers.SanitizePathToAddressableName(innerPath)] = innerPath;
+                    Assets[typeof(AudioClip)][PathHelpers.SanitizePathToAddressableName(innerPath).ToLower()] = innerPath;
                     break;
                 default:
                     Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
@@ -278,7 +278,7 @@ namespace TestDDLCMod
             }
             if (AssetAssetType != FileBrowserEntries.AssetReference.AssetTypes.None)
             {
-                Debug.Log($"Loading mod_asset {PathHelpers.SanitizePathToAddressableName(innerPath)} = {innerPath}");
+                Debug.Log($"Loading mod_asset {PathHelpers.SanitizePathToAddressableName(innerPath).ToLower()} = {innerPath}");
             }
             Entry.Modified = lastWriteTime;
             Entry.ModifiedUTC = Entry.Modified.ToFileTimeUtc();

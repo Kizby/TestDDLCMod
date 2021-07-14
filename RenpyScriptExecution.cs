@@ -1,6 +1,8 @@
 using HarmonyLib;
 using RenpyParser;
 using RenPyParser;
+using RenPyParser.AssetManagement;
+using RenPyParser.Sprites;
 using RenPyParser.Transforms;
 using RenPyParser.VGPrompter.DataHolders;
 using RenPyParser.VGPrompter.Script.Internal;
@@ -764,6 +766,11 @@ namespace TestDDLCMod
                     {
                         // made the block in the assignment
                     }
+                    else if (actual.GetDataType() == DataType.String)
+                    {
+                        var fullname = bundle + " " + imgName;
+                        block = BuildImageBlock(fullname, actual.GetString(), context);
+                    }
                     else if (actual.IsObject<RenpyStandardProxyLib.Image>())
                     {
                         // need to make a block
@@ -804,9 +811,51 @@ namespace TestDDLCMod
             RenpyBlock block = null;
             if (!context.script.Blocks.Contains(label))
             {
-                block = new RenpyBlock(label);
+                block = new RenpyImageBlock(label);
                 block.callParameters = new RenpyCallParameter[0];
-                block.Contents.Add(new RenpyLoadImage(label, expression));
+                if (expression.Contains("im.Composite"))
+                {
+                    expression = expression.Substring(expression.IndexOf("im.Composite"));
+                    var composite = CompositeSpriteParser.ParseFixedCompositeSprite(expression);
+                    for (var i = 0; i < composite.AssetPaths.Length; ++i)
+                    {
+                        var pathComponents = composite.AssetPaths[i].Split('/');
+                        var asset = pathComponents[pathComponents.Length - 1];
+                        if (pathComponents.Length > 1)
+                        {
+                            asset = pathComponents[pathComponents.Length - 2] + " " + asset;
+                        }
+                        block.Contents.Add(new RenpyLoadImage(PathHelpers.SanitizePathToAddressableName(asset), composite.AssetPaths[i]));
+                        block.Contents.Add(new RenpyImmediateTransform($"xpos {composite.Offsets[i][0]} ypos {composite.Offsets[i][1]}"));
+                    }
+                }
+                else
+                {
+                    if (!Mod.ActiveMod.Assets[typeof(Sprite)].ContainsKey(label))
+                    {
+                        var asset = expression.Split('/').Last().Split('.').First();
+                        if (Mod.ActiveMod.Assets[typeof(Sprite)].ContainsKey(asset))
+                        {
+                            Mod.ActiveMod.Assets[typeof(Sprite)][label] = Mod.ActiveMod.Assets[typeof(Sprite)][asset];
+
+                            ActiveLabelAssetBundles labelBundles = AccessTools.StaticFieldRefAccess<ActiveLabelAssetBundles>(typeof(Renpy), "s_ActiveLabelAssetBundles");
+                            var deps = AccessTools.Field(typeof(ActiveLabelAssetBundles), "<LabelAssetBundle>k__BackingField").GetValue(labelBundles) as LabelAssetBundleDependencies;
+                            string bundle;
+                            if (deps.TryGetBundle(label, out bundle))
+                            {
+                                Debug.Log($"Why are we building an image block for {label}? It's already in {bundle}!");
+                            }
+                            else
+                            {
+                                deps.AddAsset(label, DontUnloadBundles.MOD_BUNDLE_NAME, Mod.ActiveMod.Assets[typeof(Sprite)][label]);
+                            }
+                        } else
+                        {
+                            Debug.Log($"Couldn't resolve {label} or {asset} as a mod asset");
+                        }
+                    }
+                    block.Contents.Add(new RenpyLoadImage(label, expression));
+                }
             }
 
             return block;

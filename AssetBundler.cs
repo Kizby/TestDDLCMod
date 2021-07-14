@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using RenPyParser.AssetManagement;
 using System;
 using System.Collections.Generic;
@@ -813,7 +813,18 @@ namespace TestDDLCMod
             {
                 return true;
             }
-            if (!Mod.ActiveMod.Assets[type].ContainsKey(name))
+            /*if (type == typeof(GameObject))
+            {
+                foreach (var testType in Mod.ActiveMod.Assets.Keys)
+                {
+                    if (Mod.ActiveMod.Assets[testType].ContainsKey(name))
+                    {
+                        type = testType;
+                        break;
+                    }
+                }
+            }*/
+            if (!Mod.ActiveMod.Assets.ContainsKey(type) || !Mod.ActiveMod.Assets[type].ContainsKey(name))
             {
                 return true;
             }
