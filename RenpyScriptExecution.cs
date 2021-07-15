@@ -851,6 +851,10 @@ namespace TestDDLCMod
                         {
                             // probably a mod asset
                             asset = composite.AssetPaths[i];
+                            if (asset.StartsWith("images"))
+                            {
+                                asset = asset.Substring("images".Length);
+                            }
                         }
                         block.Contents.Add(new RenpyLoadImage(asset, composite.AssetPaths[i]));
                         block.Contents.Add(new RenpyImmediateTransform($"xpos {composite.Offsets[i][0]} ypos {composite.Offsets[i][1]}"));
