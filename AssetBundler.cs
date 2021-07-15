@@ -1,5 +1,6 @@
-using HarmonyLib;
+﻿using HarmonyLib;
 using RenPyParser.AssetManagement;
+using RenPyParser.Images;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -813,6 +814,25 @@ namespace TestDDLCMod
             {
                 return true;
             }
+            if (type == typeof(GameObject))
+            {
+                // actually looking for a container it can render
+                foreach (var testType in Mod.ActiveMod.Assets.Keys)
+                {
+                    if (Mod.ActiveMod.Assets[testType].ContainsKey(name))
+                    {
+                        switch (testType.Name)
+                        {
+                            case nameof(Sprite):
+                                var spriteObj = UnityEngine.Object.Instantiate(GameObject.Find("/OnScreen/master/spq1"));
+                                var renderer = spriteObj.AddComponent<SpriteRenderer>();
+                                renderer.sprite = PatchFileBrowserApp.LoadResource(Mod.ActiveMod.Assets[testType][name], testType) as Sprite;
+                                __result = spriteObj;
+                                return false;
+                        }
+                    }
+                }
+            }
             if (!Mod.ActiveMod.Assets.ContainsKey(type) || !Mod.ActiveMod.Assets[type].ContainsKey(name))
             {
                 return true;
@@ -820,6 +840,15 @@ namespace TestDDLCMod
             Debug.Log($"Found mod asset {name} at {Mod.ActiveMod.Assets[type][name]}");
             __result = PatchFileBrowserApp.LoadResource(Mod.ActiveMod.Assets[type][name], type);
             return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ActiveImage), "GetAssetFor")]
+    public static class InspectGetAssetFor
+    {
+        static void Postfix(string assetName, GameObject __result)
+        {
+            Debug.Log($"Got asset for {assetName}; it was {__result.name}");
         }
     }
 }

@@ -252,7 +252,7 @@ namespace TestDDLCMod
             var assetName = innerPath;
             if (assetName.Contains(".rpa/"))
             {
-                assetName = assetName.Substring(assetName.IndexOf(".rpa") + ".rpa".Length).ToLower();
+                assetName = assetName.Substring(assetName.IndexOf(".rpa/") + ".rpa/".Length).ToLower();
             }
             switch (Path.GetExtension(innerPath).ToLower())
             {
@@ -264,18 +264,21 @@ namespace TestDDLCMod
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Text;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.TextAsset;
                     Assets[typeof(TextAsset)][assetName] = innerPath;
+                    Assets[typeof(TextAsset)]["/" + assetName] = innerPath;
                     break;
                 case ".png":
                 case ".jpg":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Image;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.Sprite;
                     Assets[typeof(Sprite)][assetName] = innerPath;
+                    Assets[typeof(Sprite)]["/" + assetName] = innerPath;
                     break;
                 case ".ogg":
                 case ".mp3":
                     Entry.AssetType = FileBrowserEntries.FileBrowserEntry.Type.Audio;
                     AssetAssetType = FileBrowserEntries.AssetReference.AssetTypes.AudioClip;
                     Assets[typeof(AudioClip)][assetName] = innerPath;
+                    Assets[typeof(AudioClip)]["/" + assetName] = innerPath;
                     break;
                 default:
                     Entry.Flags = FileBrowserEntries.FileBrowserEntry.EntryFlags.Delete;
